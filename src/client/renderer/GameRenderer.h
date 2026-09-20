@@ -1,0 +1,97 @@
+#pragma once
+
+#include <memory>
+#include <vector>
+
+#include "client/renderer/ItemInHandRenderer.h"
+#include "client/renderer/MouseFilter.h"
+
+#include "world/entity/Entity.h"
+
+#include "java/Type.h"
+#include "java/System.h"
+#include "java/Random.h"
+
+class Minecraft;
+class Packet63Digging;
+
+class GameRenderer
+{
+	friend int runNetworkSmoke();
+
+private:
+	Minecraft &mc;
+
+	struct AlphaPlaceDigging
+	{
+		int_t x = 0;
+		int_t y = 0;
+		int_t z = 0;
+		int_t face = 0;
+		float progress = 0.0f;
+		long_t timestamp = 0;
+	};
+
+	std::vector<AlphaPlaceDigging> alphaPlaceDigging;
+	bool isAlphaPlaceDiggingExpired(const AlphaPlaceDigging &entry, Player &player, long_t now) const;
+	void renderAlphaPlaceDigging(Player &player, float partialTick);
+
+	float renderDistance = 0.0f;
+
+	ItemInHandRenderer itemInHandRenderer;
+	MouseFilter mouseFilterXAxis;
+	MouseFilter mouseFilterYAxis;
+
+	int_t ticks = 0;
+	std::shared_ptr<Entity> hovered;
+
+	double zoom = 1.0;
+	double zoom_x = 0.0;
+	double zoom_y = 0.0;
+
+	long_t lastActiveTime = System::currentTimeMillis();
+	long_t lastRenderNano = 0; // EntityRenderer.field_28133_I (frame deadline reference)
+
+	Random random = Random();
+	int_t rainSoundCounter = 0;
+
+public:
+	volatile int xMod = 0, yMod = 0;
+
+	float fr = 0.0f, fg = 0.0f, fb = 0.0f;
+private:
+	float fogBrO = 0.0f, fogBr = 0.0f;
+
+public:
+	GameRenderer(Minecraft &mc);
+
+	void tick();
+	void itemPlaced();
+	void itemUsed();
+	void pick(float a);
+	void updateAlphaPlaceDigging(const Packet63Digging &packet);
+
+private:
+	float getFov(float a);
+
+	void bobHurt(float a);
+	void bobView(float a);
+	void moveCameraToPlayer(float a);
+
+	void setupCamera(float a, int_t eye);
+	void renderItemInHand(float a, int_t eye);
+	void addRainParticles();
+	void renderRainSnow(float a);
+
+public:
+	void render(float a);
+	void renderLevel(float a, long_t deadline);
+
+	void setupGuiScreen();
+private:
+	void setupClearColor(float a);
+	void setupFog(int_t mode);
+
+public:
+	void updateAllChunks();
+};

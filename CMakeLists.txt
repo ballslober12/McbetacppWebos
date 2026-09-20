@@ -1,0 +1,1383 @@
+cmake_minimum_required(VERSION 3.14)
+
+project(McBetaCpp
+	VERSION 1.2.2.0
+	DESCRIPTION "A game about placing blocks to build anything you can imagine."
+	LANGUAGES C CXX
+)
+
+# LG webOS/Wayland target. This build intentionally reuses the exact SDL2
+# ABI package from the known-working 3D Wayland demo instead of building a
+# second SDL2 copy inside the game.
+option(B173_WEBOS "Build the LG webOS Wayland client" ON)
+option(B173_WEBOS_LGNC "Enable LGNC remote input integration" ON)
+option(B173_STATIC_CXX_RUNTIME "Statically link libstdc++ and libgcc" ON)
+set(B173_WEBOS_SDL2_ROOT "${CMAKE_SOURCE_DIR}/vendor/SDL2" CACHE PATH "Known-working webOS SDL2 ABI package")
+
+set(McBetaCpp_SOURCES
+	"src/ClientTarget.h"
+	"src/client/Minecraft.cpp"
+	"src/client/Minecraft.h"
+	"src/client/ScreenShotHelper.cpp"
+	"src/client/ScreenShotHelper.h"
+	"src/client/spc/SPCCommand.cpp"
+	"src/client/spc/SPCCommand.h"
+	
+	"src/Facing.h"
+	"src/SharedConstants.cpp"
+	"src/SharedConstants.h"
+	
+	"src/client/Lighting.cpp"
+	"src/client/Lighting.h"
+	"src/client/MemoryTracker.cpp"
+	"src/client/MemoryTracker.h"
+	"src/client/MouseHandler.cpp"
+	"src/client/MouseHandler.h"
+	"src/client/OpenGLCapabilities.cpp"
+	"src/client/OpenGLCapabilities.h"
+	"src/client/Options.cpp"
+	"src/client/Options.h"
+	"src/client/ProgressRenderer.cpp"
+	"src/client/ProgressRenderer.h"
+	"src/client/Timer.cpp"
+	"src/client/Timer.h"
+	"src/client/User.cpp"
+	"src/client/User.h"
+
+	"src/client/gamemode/GameMode.cpp"
+	"src/client/gamemode/GameMode.h"
+	"src/client/gamemode/MultiplayerGameMode.cpp"
+	"src/client/gamemode/MultiplayerGameMode.h"
+	"src/client/gamemode/SurvivalMode.cpp"
+	"src/client/gamemode/SurvivalMode.h"
+	"src/client/level/MultiplayerLevel.cpp"
+	"src/client/level/MultiplayerLevel.h"
+	
+	"src/client/gui/Button.cpp"
+	"src/client/gui/Button.h"
+	"src/client/gui/AchievementToast.cpp"
+	"src/client/gui/AchievementToast.h"
+	"src/client/gui/AchievementsScreen.cpp"
+	"src/client/gui/AchievementsScreen.h"
+	"src/client/gui/ChatScreen.cpp"
+	"src/client/gui/ChatScreen.h"
+	"src/client/gui/ChatLine.cpp"
+	"src/client/gui/ChatLine.h"
+	"src/client/gui/ConflictWarningScreen.cpp"
+	"src/client/gui/ConflictWarningScreen.h"
+	"src/MinecraftException.h"
+	"src/client/gui/ConfirmScreen.cpp"
+	"src/client/gui/ConfirmScreen.h"
+	"src/client/gui/ConnectFailedScreen.cpp"
+	"src/client/gui/ConnectFailedScreen.h"
+	"src/client/gui/ConnectingScreen.cpp"
+	"src/client/gui/ConnectingScreen.h"
+	"src/client/gui/ControlsScreen.cpp"
+	"src/client/gui/ControlsScreen.h"
+	"src/client/gui/CreateWorldScreen.cpp"
+	"src/client/gui/CreateWorldScreen.h"
+	"src/client/gui/DeathScreen.cpp"
+	"src/client/gui/DeathScreen.h"
+	"src/client/gui/DownloadTerrainScreen.cpp"
+	"src/client/gui/DownloadTerrainScreen.h"
+	"src/client/gui/Font.cpp"
+	"src/client/gui/Font.h"
+	"src/client/gui/Gui.cpp"
+	"src/client/gui/Gui.h"
+	"src/client/gui/GuiComponent.cpp"
+	"src/client/gui/GuiComponent.h"
+	"src/client/gui/GuiSlot.cpp"
+	"src/client/gui/GuiSlot.h"
+	"src/client/gui/GuiTextField.cpp"
+	"src/client/gui/GuiTextField.h"
+	"src/client/gui/InventoryScreen.cpp"
+	"src/client/gui/InventoryScreen.h"
+	"src/client/gui/MultiplayerScreen.cpp"
+	"src/client/gui/MultiplayerScreen.h"
+	"src/client/gui/WorkbenchScreen.cpp"
+	"src/client/gui/WorkbenchScreen.h"
+	"src/client/gui/ChestScreen.cpp"
+	"src/client/gui/ChestScreen.h"
+	"src/client/gui/FurnaceScreen.cpp"
+	"src/client/gui/FurnaceScreen.h"
+	"src/client/gui/DispenserScreen.cpp"
+	"src/client/gui/DispenserScreen.h"
+	"src/client/gui/EditSignScreen.cpp"
+	"src/client/gui/EditSignScreen.h"
+	"src/client/gui/OptionsScreen.cpp"
+	"src/client/gui/OptionsScreen.h"
+	"src/client/gui/PauseScreen.cpp"
+	"src/client/gui/PauseScreen.h"
+	"src/client/gui/StatisticsScreen.cpp"
+	"src/client/gui/StatisticsScreen.h"
+	"src/client/gui/Screen.cpp"
+	"src/client/gui/Screen.h"
+	"src/client/gui/ContainerScreen.cpp"
+	"src/client/gui/ContainerScreen.h"
+	"src/client/gui/ScreenSizeCalculator.cpp"
+	"src/client/gui/ScreenSizeCalculator.h"
+	"src/client/gui/SelectWorldScreen.cpp"
+	"src/client/gui/SelectWorldScreen.h"
+	"src/client/gui/RenameWorldScreen.cpp"
+	"src/client/gui/RenameWorldScreen.h"
+	"src/client/gui/WorldSelectionList.cpp"
+	"src/client/gui/WorldSelectionList.h"
+	"src/client/gui/SlideButton.cpp"
+	"src/client/gui/SlideButton.h"
+	"src/client/gui/SleepScreen.cpp"
+	"src/client/gui/SleepScreen.h"
+	"src/client/gui/SmallButton.cpp"
+	"src/client/gui/SmallButton.h"
+
+	"src/client/gui/VideoSettingsScreen.cpp"
+	"src/client/gui/VideoSettingsScreen.h"
+	"src/client/locale/Language.cpp"
+	"src/client/locale/Language.h"
+	
+	"src/client/model/Cube.cpp"
+	"src/client/model/Cube.h"
+	"src/client/model/HumanoidModel.cpp"
+	"src/client/model/HumanoidModel.h"
+	"src/client/model/Model.cpp"
+	"src/client/model/Model.h"
+	"src/client/model/BoatModel.cpp"
+	"src/client/model/BoatModel.h"
+	"src/client/model/MinecartModel.cpp"
+	"src/client/model/MinecartModel.h"
+	"src/client/model/SignModel.cpp"
+	"src/client/model/SignModel.h"
+	"src/client/model/Polygon.cpp"
+	"src/client/model/Polygon.h"
+	"src/client/model/Vertex.cpp"
+	"src/client/model/Vertex.h"
+	"src/client/model/QuadrupedModel.cpp"
+	"src/client/model/QuadrupedModel.h"
+	"src/client/model/PigModel.cpp"
+	"src/client/model/PigModel.h"
+	"src/client/model/CowModel.cpp"
+	"src/client/model/CowModel.h"
+	"src/client/model/SheepModel.cpp"
+	"src/client/model/SheepModel.h"
+	"src/client/model/SheepFurModel.cpp"
+	"src/client/model/SheepFurModel.h"
+	"src/client/model/ChickenModel.cpp"
+	"src/client/model/ChickenModel.h"
+	"src/client/model/CreeperModel.cpp"
+	"src/client/model/CreeperModel.h"
+	"src/client/model/SpiderModel.cpp"
+	"src/client/model/SpiderModel.h"
+	"src/client/model/SquidModel.cpp"
+	"src/client/model/SquidModel.h"
+	"src/client/model/SkeletonModel.cpp"
+	"src/client/model/SkeletonModel.h"
+	"src/client/model/SlimeModel.cpp"
+	"src/client/model/SlimeModel.h"
+	"src/client/model/WolfModel.cpp"
+	"src/client/model/WolfModel.h"
+	"src/client/model/GhastModel.cpp"
+	"src/client/model/GhastModel.h"
+	"src/world/item/ItemSnowball.cpp"
+	"src/world/item/ItemSnowball.h"
+	"src/world/item/ItemEgg.cpp"
+	"src/world/item/ItemEgg.h"
+	"src/world/item/ItemFishingRod.cpp"
+	"src/world/item/ItemFishingRod.h"
+	"src/world/item/ItemPainting.cpp"
+	"src/world/item/ItemPainting.h"
+	
+	"src/client/player/Input.cpp"
+	"src/client/player/Input.h"
+	"src/client/player/KeyboardInput.cpp"
+	"src/client/player/KeyboardInput.h"
+	"src/client/player/LocalPlayer.cpp"
+	"src/client/player/LocalPlayer.h"
+	"src/client/player/MultiplayerLocalPlayer.cpp"
+	"src/client/player/MultiplayerLocalPlayer.h"
+	"src/client/player/RemotePlayer.cpp"
+	"src/client/player/RemotePlayer.h"
+	
+	"src/client/renderer/Chunk.cpp"
+	"src/client/renderer/Chunk.h"
+	"src/client/renderer/TerrainBufferPool.cpp"
+	"src/client/renderer/TerrainBufferPool.h"
+	"src/client/renderer/DirtyChunkSorter.h"
+	"src/client/renderer/DistanceChunkSorter.h"
+	"src/client/renderer/GameRenderer.cpp"
+	"src/client/renderer/GameRenderer.h"
+	"src/client/renderer/ItemInHandRenderer.cpp"
+	"src/client/renderer/ItemInHandRenderer.h"
+	"src/client/renderer/MouseFilter.cpp"
+	"src/client/renderer/MouseFilter.h"
+	"src/client/renderer/MapItemRenderer.cpp"
+	"src/client/renderer/MapItemRenderer.h"
+	"src/client/renderer/LevelRenderer.cpp"
+	"src/client/renderer/LevelRenderer.h"
+	"src/client/renderer/OffsettedRenderList.cpp"
+	"src/client/renderer/OffsettedRenderList.h"
+	"src/client/renderer/Tesselator.cpp"
+	"src/client/renderer/Tesselator.h"
+	"src/client/renderer/TerrainIndexBuffer.cpp"
+	"src/client/renderer/TerrainIndexBuffer.h"
+	"src/client/renderer/TerrainVertex.h"
+	"src/client/renderer/Textures.cpp"
+	"src/client/renderer/Textures.h"
+	"src/client/renderer/TileRenderer.cpp"
+	"src/client/renderer/TileRenderer.h"
+	"src/client/renderer/SignRenderer.cpp"
+	"src/client/renderer/SignRenderer.h"
+
+	"src/client/renderer/texturefx/TextureFX.cpp"
+	"src/client/renderer/texturefx/TextureFX.h"
+	"src/client/renderer/texturefx/TileSize.cpp"
+	"src/client/renderer/texturefx/TileSize.h"
+	"src/client/renderer/texturefx/CustomAnimation.cpp"
+	"src/client/renderer/texturefx/CustomAnimation.h"
+	"src/client/renderer/texturefx/TextureWaterFX.cpp"
+	"src/client/renderer/texturefx/TextureWaterFX.h"
+	"src/client/renderer/texturefx/TextureWaterFlowFX.cpp"
+	"src/client/renderer/texturefx/TextureWaterFlowFX.h"
+	"src/client/renderer/texturefx/TextureLavaFX.cpp"
+	"src/client/renderer/texturefx/TextureLavaFX.h"
+	"src/client/renderer/texturefx/TextureLavaFlowFX.cpp"
+	"src/client/renderer/texturefx/TextureLavaFlowFX.h"
+	"src/client/renderer/texturefx/TexturePortalFX.cpp"
+	"src/client/renderer/texturefx/TexturePortalFX.h"
+	"src/client/renderer/texturefx/TextureFlamesFX.cpp"
+	"src/client/renderer/texturefx/TextureFlamesFX.h"
+	"src/client/renderer/texturefx/TextureItemFX.cpp"
+	"src/client/renderer/texturefx/TextureItemFX.h"
+	"src/client/renderer/texturefx/TextureCompassFX.cpp"
+	"src/client/renderer/texturefx/TextureCompassFX.h"
+	"src/client/renderer/texturefx/TextureWatchFX.cpp"
+	"src/client/renderer/texturefx/TextureWatchFX.h"
+
+	"src/client/renderer/culling/Culler.h"
+	"src/client/renderer/culling/Frustum.cpp"
+	"src/client/renderer/culling/Frustum.h"
+	"src/client/renderer/culling/FrustumCuller.cpp"
+	"src/client/renderer/culling/FrustumCuller.h"
+	"src/client/renderer/culling/FrustumData.cpp"
+	"src/client/renderer/culling/FrustumData.h"
+	
+	"src/client/renderer/entity/EntityRenderDispatcher.cpp"
+	"src/client/renderer/entity/EntityRenderDispatcher.h"
+	"src/client/renderer/entity/EntityRenderer.cpp"
+	"src/client/renderer/entity/EntityRenderer.h"
+	"src/client/renderer/entity/GenericEntityRenderer.cpp"
+	"src/client/renderer/entity/GenericEntityRenderer.h"
+	"src/client/renderer/entity/MobRenderer.cpp"
+	"src/client/renderer/entity/MobRenderer.h"
+	"src/client/renderer/entity/HumanoidMobRenderer.cpp"
+	"src/client/renderer/entity/HumanoidMobRenderer.h"
+	"src/client/renderer/entity/PlayerRenderer.cpp"
+	"src/client/renderer/entity/ItemRenderer.cpp"
+	"src/client/renderer/entity/ItemRenderer.h"
+	"src/client/renderer/entity/PlayerRenderer.h"
+	"src/client/renderer/entity/FallingTileRenderer.cpp"
+	"src/client/renderer/entity/FallingTileRenderer.h"
+	"src/client/renderer/entity/BoatRenderer.cpp"
+	"src/client/renderer/entity/BoatRenderer.h"
+	"src/client/renderer/entity/MinecartRenderer.cpp"
+	"src/client/renderer/entity/MinecartRenderer.h"
+	"src/client/renderer/entity/TNTPrimedRenderer.cpp"
+	"src/client/renderer/entity/ArrowRenderer.cpp"
+	"src/client/renderer/entity/ArrowRenderer.h"
+	"src/client/renderer/entity/FishingHookRenderer.cpp"
+	"src/client/renderer/entity/FishingHookRenderer.h"
+	"src/client/renderer/entity/PaintingRenderer.cpp"
+	"src/client/renderer/entity/PaintingRenderer.h"
+	"src/client/renderer/entity/LightningBoltRenderer.cpp"
+	"src/client/renderer/entity/LightningBoltRenderer.h"
+	"src/client/renderer/entity/TNTPrimedRenderer.h"
+	"src/client/renderer/entity/PistonTileEntityRenderer.cpp"
+	"src/client/renderer/entity/PistonTileEntityRenderer.h"
+	"src/client/renderer/entity/ChickenRenderer.cpp"
+	"src/client/renderer/entity/ChickenRenderer.h"
+	"src/client/renderer/entity/PigRenderer.cpp"
+	"src/client/renderer/entity/PigRenderer.h"
+	"src/client/renderer/entity/SheepRenderer.cpp"
+	"src/client/renderer/entity/SheepRenderer.h"
+	"src/client/renderer/entity/CreeperRenderer.cpp"
+	"src/client/renderer/entity/CreeperRenderer.h"
+	"src/client/renderer/entity/SpiderRenderer.cpp"
+	"src/client/renderer/entity/SpiderRenderer.h"
+	"src/client/renderer/entity/SquidRenderer.cpp"
+	"src/client/renderer/entity/SquidRenderer.h"
+	"src/client/renderer/entity/SlimeRenderer.cpp"
+	"src/client/renderer/entity/SlimeRenderer.h"
+	"src/client/renderer/entity/WolfRenderer.cpp"
+	"src/client/renderer/entity/WolfRenderer.h"
+	"src/client/renderer/entity/GiantRenderer.cpp"
+	"src/client/renderer/entity/GiantRenderer.h"
+	"src/client/renderer/entity/FireballRenderer.cpp"
+	"src/client/renderer/entity/FireballRenderer.h"
+	"src/client/renderer/entity/GhastRenderer.cpp"
+	"src/client/renderer/entity/GhastRenderer.h"
+	"src/client/renderer/entity/ThrownItemRenderer.cpp"
+	"src/client/renderer/entity/ThrownItemRenderer.h"
+
+	"src/client/skins/DefaultTexturePack.cpp"
+	"src/client/skins/DefaultTexturePack.h"
+	"src/client/skins/FileTexturePack.cpp"
+	"src/client/skins/FileTexturePack.h"
+	"src/client/skins/TexturePack.cpp"
+	"src/client/skins/TexturePack.h"
+	"src/client/skins/TexturePackRepository.cpp"
+	"src/client/skins/TexturePackRepository.h"
+	"src/client/skins/TexturePackSelectScreen.cpp"
+	"src/client/skins/TexturePackSelectScreen.h"
+
+
+
+	"src/client/particle/Particle.cpp"
+	"src/client/particle/Particle.h"
+	"src/client/particle/RainParticle.cpp"
+	"src/client/particle/RainParticle.h"
+	"src/client/particle/BubbleParticle.cpp"
+	"src/client/particle/BubbleParticle.h"
+	"src/client/particle/SmokeParticle.cpp"
+	"src/client/particle/SmokeParticle.h"
+	"src/client/particle/ItemParticle.cpp"
+	"src/client/particle/ItemParticle.h"
+	"src/client/particle/FlameParticle.cpp"
+	"src/client/particle/FlameParticle.h"
+	"src/client/particle/LavaParticle.cpp"
+	"src/client/particle/LavaParticle.h"
+	"src/client/particle/ExplodeParticle.cpp"
+	"src/client/particle/ExplodeParticle.h"
+	"src/client/particle/RedDustParticle.cpp"
+	"src/client/particle/RedDustParticle.h"
+	"src/client/particle/HeartParticle.cpp"
+	"src/client/particle/HeartParticle.h"
+	"src/client/particle/NoteParticle.cpp"
+	"src/client/particle/NoteParticle.h"
+	"src/client/particle/PortalParticle.cpp"
+	"src/client/particle/PortalParticle.h"
+	"src/client/particle/SplashParticle.cpp"
+	"src/client/particle/SplashParticle.h"
+	"src/client/particle/WaterDropParticle.cpp"
+	"src/client/particle/WaterDropParticle.h"
+	"src/client/particle/TakeAnimationParticle.cpp"
+	"src/client/particle/TakeAnimationParticle.h"
+	"src/client/particle/TerrainParticle.cpp"
+	"src/client/particle/TerrainParticle.h"
+	"src/client/particle/ParticleEngine.cpp"
+	"src/client/particle/ParticleEngine.h"
+	"src/client/title/AlphaPlaceTitleScreen.cpp"
+	"src/client/title/AlphaPlaceTitleScreen.h"
+	"src/client/title/TitleScreen.cpp"
+	"src/client/title/TitleScreen.h"
+
+	"src/locale/Descriptive.h"
+	
+	"src/nbt/ByteArrayTag.cpp"
+	"src/nbt/ByteArrayTag.h"
+	"src/nbt/ByteTag.cpp"
+	"src/nbt/ByteTag.h"
+	"src/nbt/CompoundTag.cpp"
+	"src/nbt/CompoundTag.h"
+	"src/nbt/DoubleTag.cpp"
+	"src/nbt/DoubleTag.h"
+	"src/nbt/EndTag.cpp"
+	"src/nbt/EndTag.h"
+	"src/nbt/FloatTag.cpp"
+	"src/nbt/FloatTag.h"
+	"src/nbt/IntTag.cpp"
+	"src/nbt/IntTag.h"
+	"src/nbt/ListTag.cpp"
+	"src/nbt/ListTag.h"
+	"src/nbt/LongTag.cpp"
+	"src/nbt/LongTag.h"
+	"src/nbt/NbtIo.cpp"
+	"src/nbt/NbtIo.h"
+	"src/nbt/ShortTag.cpp"
+	"src/nbt/ShortTag.h"
+	"src/nbt/StringTag.cpp"
+	"src/nbt/StringTag.h"
+	"src/nbt/Tag.cpp"
+	"src/nbt/Tag.h"
+
+	"src/util/GLU.cpp"
+	"src/util/GLU.h"
+	"src/util/HttpGet.cpp"
+	"src/util/HttpGet.h"
+	"src/util/Memory.h"
+	"src/util/Mth.cpp"
+	"src/util/Mth.h"
+	"src/util/Profiler.cpp"
+	"src/util/Profiler.h"
+	"src/tools/BlockSmoke.cpp"
+	"src/tools/BlockSmoke.h"
+	"src/tools/FindingsSmoke.cpp"
+	"src/tools/FindingsSmoke.h"
+	"src/tools/audit/AuditCases.h"
+	"src/tools/audit/Foundation.cpp"
+	"src/tools/audit/Items.cpp"
+	"src/tools/audit/Plants.cpp"
+	"src/tools/audit/Attachments.cpp"
+	"src/tools/audit/Redstone.cpp"
+	"src/tools/audit/RailPiston.cpp"
+	"src/tools/audit/Containers.cpp"
+	"src/tools/audit/LiquidsFirePortal.cpp"
+	"src/tools/audit/LooseEntities.cpp"
+	"src/tools/audit/Projectiles.cpp"
+	"src/tools/audit/Vehicles.cpp"
+	"src/tools/audit/JavaGlassProbe.cpp"
+	"src/tools/MultiplayerScreenSmoke.cpp"
+	"src/tools/MultiplayerScreenSmoke.h"
+	"src/tools/NetworkSmoke.cpp"
+	"src/tools/NetworkSmoke.h"
+	"src/tools/SaveConverterSmoke.cpp"
+	"src/tools/SaveConverterSmoke.h"
+	"src/tools/RegionIoSmoke.cpp"
+	"src/tools/RegionIoSmoke.h"
+	"src/tools/TerrainStorageSmoke.cpp"
+	"src/tools/TerrainStorageSmoke.h"
+	"src/util/ProgressListener.h"
+
+	"src/world/entity/Entity.cpp"
+	"src/world/entity/Entity.h"
+	"src/world/entity/EntityEvent.h"
+	"src/world/entity/EntityIO.cpp"
+	"src/world/entity/EntityIO.h"
+	"src/world/entity/EntityPos.cpp"
+	"src/world/entity/EntityPos.h"
+	"src/world/entity/Mob.cpp"
+	"src/world/entity/Mob.h"
+	"src/world/entity/PathfinderMob.cpp"
+	"src/world/entity/PathfinderMob.h"
+	"src/world/entity/PrimedTNT.cpp"
+	"src/world/entity/PrimedTNT.h"
+	"src/world/entity/projectile/EntityArrow.cpp"
+	"src/world/entity/projectile/EntityArrow.h"
+	"src/world/entity/projectile/EntityFish.cpp"
+	"src/world/entity/projectile/EntityFish.h"
+	"src/world/entity/projectile/EntityFireball.cpp"
+	"src/world/entity/projectile/EntityFireball.h"
+	"src/world/entity/EntityLightningBolt.cpp"
+	"src/world/entity/EntityLightningBolt.h"
+
+	"src/world/entity/player/Player.cpp"
+	"src/world/entity/player/Player.h"
+	"src/world/entity/player/InventoryPlayer.cpp"
+	"src/world/entity/player/InventoryPlayer.h"
+	"src/world/entity/item/FallingTile.cpp"
+	"src/world/entity/item/FallingTile.h"
+	"src/world/entity/item/EntityItem.cpp"
+	"src/world/entity/item/EntityItem.h"
+	"src/world/entity/item/EntityPainting.cpp"
+	"src/world/entity/item/EntityPainting.h"
+	"src/world/entity/item/PaintingArt.cpp"
+	"src/world/entity/item/PaintingArt.h"
+	"src/world/entity/animal/Animal.cpp"
+	"src/world/entity/animal/Animal.h"
+	"src/world/entity/animal/Cow.cpp"
+	"src/world/entity/animal/Cow.h"
+	"src/world/entity/monster/Monster.cpp"
+	"src/world/entity/monster/Monster.h"
+	"src/world/entity/monster/Zombie.cpp"
+	"src/world/entity/monster/Zombie.h"
+	"src/world/entity/monster/Skeleton.cpp"
+	"src/world/entity/monster/Skeleton.h"
+	"src/world/entity/monster/PigZombie.cpp"
+	"src/world/entity/monster/PigZombie.h"
+	"src/world/entity/monster/Slime.cpp"
+	"src/world/entity/monster/Slime.h"
+	"src/world/entity/monster/Giant.cpp"
+	"src/world/entity/monster/Giant.h"
+	"src/world/entity/monster/Ghast.cpp"
+	"src/world/entity/monster/Ghast.h"
+	"src/world/item/ItemBow.cpp"
+	"src/world/item/ItemBow.h"
+	"src/world/entity/animal/Pig.cpp"
+	"src/world/entity/animal/Pig.h"
+	"src/world/entity/animal/Sheep.cpp"
+	"src/world/entity/animal/Sheep.h"
+	"src/world/entity/animal/Chicken.cpp"
+	"src/world/entity/animal/Chicken.h"
+	"src/world/entity/animal/Squid.cpp"
+	"src/world/entity/animal/Squid.h"
+	"src/world/entity/animal/Wolf.cpp"
+	"src/world/entity/animal/Wolf.h"
+	"src/world/entity/monster/Spider.cpp"
+	"src/world/entity/monster/Spider.h"
+	"src/world/entity/monster/Creeper.cpp"
+	"src/world/entity/monster/Creeper.h"
+
+	"src/world/item/ItemInstance.cpp"
+	"src/world/item/ItemInstance.h"
+	"src/world/item/Item.cpp"
+	"src/world/item/Item.h"
+	"src/world/item/ItemTool.cpp"
+	"src/world/item/ItemTool.h"
+	"src/world/item/ItemSpade.cpp"
+	"src/world/item/ItemSpade.h"
+	"src/world/item/ItemAxe.cpp"
+	"src/world/item/ItemAxe.h"
+	"src/world/item/ItemSword.cpp"
+	"src/world/item/ItemSword.h"
+	"src/world/item/ItemHoe.cpp"
+	"src/world/item/ItemHoe.h"
+	"src/world/item/ItemShears.cpp"
+	"src/world/item/ItemShears.h"
+	"src/world/item/ItemSaddle.cpp"
+	"src/world/item/ItemSaddle.h"
+	"src/world/item/ItemBed.cpp"
+	"src/world/item/ItemBed.h"
+	"src/world/item/ItemMap.cpp"
+	"src/world/item/ItemMap.h"
+	"src/world/item/ItemCoal.cpp"
+	"src/world/item/ItemCoal.h"
+	"src/world/item/ItemSeeds.cpp"
+	"src/world/item/ItemSeeds.h"
+	"src/world/item/ItemFood.cpp"
+	"src/world/item/ItemFood.h"
+	"src/world/item/ItemSoup.cpp"
+	"src/world/item/ItemSoup.h"
+	"src/world/item/ItemBucket.cpp"
+	"src/world/item/ItemBucket.h"
+	"src/world/item/ItemPickaxe.cpp"
+	"src/world/item/ItemPickaxe.h"
+	"src/world/item/ItemArmor.cpp"
+	"src/world/item/ItemArmor.h"
+	"src/world/item/ItemSlab.cpp"
+	"src/world/item/ItemSlab.h"
+	"src/world/item/ItemDoor.cpp"
+	"src/world/item/ItemDoor.h"
+	"src/world/item/ItemFlintAndSteel.cpp"
+	"src/world/item/ItemFlintAndSteel.h"
+	"src/world/item/ItemSign.cpp"
+	"src/world/item/ItemSign.h"
+	"src/world/item/ItemRedStone.cpp"
+	"src/world/item/ItemRedStone.h"
+	"src/world/item/ItemMinecart.cpp"
+	"src/world/item/ItemMinecart.h"
+	"src/world/item/ItemBoat.cpp"
+	"src/world/item/ItemBoat.h"
+	"src/world/item/RecordItem.cpp"
+	"src/world/item/RecordItem.h"
+	"src/world/item/TileItem.cpp"
+	"src/world/item/TileItem.h"
+	"src/world/item/TilePlanterItem.cpp"
+	"src/world/item/TilePlanterItem.h"
+	"src/world/item/ItemCloth.cpp"
+	"src/world/item/ItemCloth.h"
+	"src/world/item/ItemLog.cpp"
+	"src/world/item/ItemLog.h"
+	"src/world/item/ItemSapling.cpp"
+	"src/world/item/ItemSapling.h"
+	"src/world/item/ItemLeaves.cpp"
+	"src/world/item/ItemLeaves.h"
+	"src/world/item/ItemPiston.cpp"
+	"src/world/item/ItemPiston.h"
+	"src/world/item/ItemDye.cpp"
+	"src/world/item/ItemDye.h"
+	"src/world/item/Items.cpp"
+	"src/world/item/Items.h"
+
+	"src/world/stats/Achievement.cpp"
+	"src/world/stats/Achievement.h"
+	"src/world/stats/AchievementList.cpp"
+	"src/world/stats/AchievementList.h"
+	"src/world/stats/AchievementMap.cpp"
+	"src/world/stats/AchievementMap.h"
+	"src/world/stats/StatBase.cpp"
+	"src/world/stats/StatBase.h"
+	"src/world/stats/StatBasic.h"
+	"src/world/stats/StatCollector.cpp"
+	"src/world/stats/StatCollector.h"
+	"src/world/stats/StatCrafting.h"
+	"src/world/stats/StatFileWriter.cpp"
+	"src/world/stats/StatFileWriter.h"
+	"src/world/stats/StatList.cpp"
+	"src/world/stats/StatList.h"
+	"src/world/stats/StatsSyncher.cpp"
+	"src/world/stats/StatsSyncher.h"
+	"src/world/item/crafting/CraftingContainer.h"
+	"src/world/item/crafting/Recipes.cpp"
+	"src/world/item/crafting/Recipes.h"
+	"src/world/item/crafting/FurnaceRecipes.cpp"
+	"src/world/item/crafting/FurnaceRecipes.h"
+	"src/world/inventory/IInventory.h"
+	"src/world/inventory/BasicInventory.cpp"
+	"src/world/inventory/BasicInventory.h"
+	"src/world/inventory/CraftingInventory.cpp"
+	"src/world/inventory/CraftingInventory.h"
+	"src/world/inventory/Slot.cpp"
+	"src/world/inventory/Slot.h"
+	"src/world/inventory/Container.cpp"
+	"src/world/inventory/Container.h"
+	"src/world/inventory/ContainerMenus.cpp"
+	"src/world/inventory/ContainerMenus.h"
+	
+	"src/world/CompoundContainer.cpp"
+	"src/world/CompoundContainer.h"
+	"src/world/entity/item/EntityBoat.cpp"
+	"src/world/entity/item/EntityBoat.h"
+	"src/world/entity/item/EntityMinecart.cpp"
+	"src/world/entity/item/EntityMinecart.h"
+	"src/world/level/ChunkPos.h"
+	"src/world/level/Coord.h"
+	"src/world/level/FoliageColor.cpp"
+	"src/world/level/FoliageColor.h"
+	"src/world/level/GrassColor.cpp"
+	"src/world/level/GrassColor.h"
+	"src/world/level/Explosion.cpp"
+	"src/world/level/Explosion.h"
+	"src/world/level/Level.cpp"
+	"src/world/level/Level.h"
+	"src/world/level/SpawnerAnimals.h"
+	"src/world/level/MapCoord.cpp"
+	"src/world/level/MapCoord.h"
+	"src/world/level/MapData.cpp"
+	"src/world/level/MapData.h"
+	"src/world/level/MapDataBase.cpp"
+	"src/world/level/MapDataBase.h"
+	"src/world/level/MapInfo.cpp"
+	"src/world/level/MapInfo.h"
+	"src/world/level/LevelListener.h"
+	"src/world/level/LevelSource.h"
+	"src/world/level/LightLayer.h"
+	"src/world/level/LightUpdate.cpp"
+	"src/world/level/LightUpdate.h"
+	"src/world/level/LightNeighborhood.h"
+	"src/world/level/Region.cpp"
+	"src/world/level/Region.h"
+	"src/world/level/SaveConverterMcRegion.cpp"
+	"src/world/level/SaveConverterMcRegion.h"
+	"src/world/level/pathfinder/Path.cpp"
+	"src/world/level/pathfinder/Path.h"
+	"src/world/level/pathfinder/PathEntity.cpp"
+	"src/world/level/pathfinder/PathEntity.h"
+	"src/world/level/pathfinder/PathPoint.cpp"
+	"src/world/level/pathfinder/PathPoint.h"
+	"src/world/level/pathfinder/Pathfinder.cpp"
+	"src/world/level/pathfinder/Pathfinder.h"
+	"src/world/level/TilePos.h"
+
+	"src/world/level/biome/BiomeSource.cpp"
+	"src/world/level/biome/BiomeSource.h"
+
+	"src/world/level/chunk/storage/OldChunkStorage.cpp"
+	"src/world/level/chunk/storage/OldChunkStorage.h"
+	"src/world/level/chunk/storage/ChunkStorage.h"
+	"src/world/level/chunk/storage/RegionFile.cpp"
+	"src/world/level/chunk/storage/RegionFile.h"
+	"src/world/level/chunk/storage/RegionFileCache.cpp"
+	"src/world/level/chunk/storage/RegionFileCache.h"
+	"src/world/level/chunk/storage/McRegionChunkStorage.cpp"
+	"src/world/level/chunk/storage/McRegionChunkStorage.h"
+	
+	"src/world/level/chunk/ChunkCache.cpp"
+	"src/world/level/chunk/ChunkCache.h"
+	"src/world/level/chunk/ChunkSource.h"
+	"src/world/level/chunk/DataLayer.cpp"
+	"src/world/level/chunk/DataLayer.h"
+	"src/world/level/chunk/EmptyLevelChunk.cpp"
+	"src/world/level/chunk/EmptyLevelChunk.h"
+	"src/world/level/chunk/LevelChunk.cpp"
+	"src/world/level/chunk/LevelChunk.h"
+	"src/world/level/chunk/MultiplayerChunkCache.cpp"
+	"src/world/level/chunk/MultiplayerChunkCache.h"
+
+	"src/world/level/dimension/Dimension.cpp"
+	"src/world/level/dimension/Dimension.h"
+	"src/world/level/dimension/HellDimension.cpp"
+	"src/world/level/dimension/HellDimension.h"
+	"src/world/level/Teleporter.cpp"
+	"src/world/level/Teleporter.h"
+	
+	"src/world/level/levelgen/feature/CaveFeature.cpp"
+	"src/world/level/levelgen/feature/CaveFeature.h"
+	"src/world/level/levelgen/feature/ClayFeature.cpp"
+	"src/world/level/levelgen/feature/ClayFeature.h"
+	"src/world/level/levelgen/feature/DungeonFeature.cpp"
+	"src/world/level/levelgen/feature/DungeonFeature.h"
+	"src/world/level/levelgen/feature/Feature.h"
+	"src/world/level/levelgen/feature/LakeFeature.cpp"
+	"src/world/level/levelgen/feature/LakeFeature.h"
+	"src/world/level/levelgen/feature/CactusFeature.cpp"
+	"src/world/level/levelgen/feature/CactusFeature.h"
+	"src/world/level/levelgen/feature/DeadBushFeature.cpp"
+	"src/world/level/levelgen/feature/DeadBushFeature.h"
+	"src/world/level/levelgen/feature/BigTreeFeature.cpp"
+	"src/world/level/levelgen/feature/BigTreeFeature.h"
+	"src/world/level/levelgen/feature/OreFeature.cpp"
+	"src/world/level/levelgen/feature/ForestFeature.cpp"
+	"src/world/level/levelgen/feature/ForestFeature.h"
+	"src/world/level/levelgen/feature/OreFeature.h"
+	"src/world/level/levelgen/feature/SpringFeature.cpp"
+	"src/world/level/levelgen/feature/FlowerFeature.cpp"
+	"src/world/level/levelgen/feature/FlowerFeature.h"
+	"src/world/level/levelgen/feature/PumpkinFeature.cpp"
+	"src/world/level/levelgen/feature/PumpkinFeature.h"
+	"src/world/level/levelgen/feature/ReedFeature.cpp"
+	"src/world/level/levelgen/feature/ReedFeature.h"
+	"src/world/level/levelgen/feature/Taiga1Feature.cpp"
+	"src/world/level/levelgen/feature/Taiga1Feature.h"
+	"src/world/level/levelgen/feature/Taiga2Feature.cpp"
+	"src/world/level/levelgen/feature/Taiga2Feature.h"
+	"src/world/level/levelgen/feature/SpringFeature.h"
+	"src/world/level/levelgen/feature/TallGrassFeature.cpp"
+	"src/world/level/levelgen/feature/TallGrassFeature.h"
+	"src/world/level/levelgen/feature/TreeFeature.cpp"
+	"src/world/level/levelgen/feature/TreeFeature.h"
+	
+	"src/world/level/levelgen/synth/ImprovedNoise.cpp"
+	"src/world/level/levelgen/synth/ImprovedNoise.h"
+	"src/world/level/levelgen/synth/PerlinNoise.cpp"
+	"src/world/level/levelgen/synth/PerlinNoise.h"
+	"src/world/level/levelgen/synth/PerlinSimplexNoise.cpp"
+	"src/world/level/levelgen/synth/PerlinSimplexNoise.h"
+	"src/world/level/levelgen/synth/SimplexNoise.cpp"
+	"src/world/level/levelgen/synth/SimplexNoise.h"
+	"src/world/level/levelgen/synth/Synth.cpp"
+	"src/world/level/levelgen/synth/Synth.h"
+	
+	"src/world/level/levelgen/HellCaveFeature.cpp"
+	"src/world/level/levelgen/HellCaveFeature.h"
+	"src/world/level/levelgen/HellRandomLevelSource.cpp"
+	"src/world/level/levelgen/HellRandomLevelSource.h"
+	"src/world/level/levelgen/feature/HellFeatures.cpp"
+	"src/world/level/levelgen/feature/HellFeatures.h"
+	"src/world/level/levelgen/LargeCaveFeature.cpp"
+	"src/world/level/levelgen/LargeCaveFeature.h"
+	"src/world/level/levelgen/LargeFeature.cpp"
+	"src/world/level/levelgen/LargeFeature.h"
+	"src/world/level/levelgen/RandomLevelSource.cpp"
+	"src/world/level/levelgen/RandomLevelSource.h"
+	
+	"src/world/level/material/DecorationMaterial.cpp"
+	"src/world/level/material/DecorationMaterial.h"
+	"src/world/level/material/GasMaterial.cpp"
+	"src/world/level/material/GasMaterial.h"
+	"src/world/level/material/LiquidMaterial.cpp"
+	"src/world/level/material/LiquidMaterial.h"
+	"src/world/level/material/Material.cpp"
+	"src/world/level/material/Material.h"
+	"src/world/level/material/MapColor.cpp"
+	"src/world/level/material/MapColor.h"
+
+	"src/world/level/tile/entity/TileEntity.cpp"
+	"src/world/level/tile/entity/TileEntity.h"
+	"src/world/level/tile/entity/ChestTileEntity.cpp"
+	"src/world/level/tile/entity/ChestTileEntity.h"
+	"src/world/level/tile/entity/FurnaceTileEntity.cpp"
+	"src/world/level/tile/entity/FurnaceTileEntity.h"
+	"src/world/level/tile/entity/NoteTileEntity.cpp"
+	"src/world/level/tile/entity/NoteTileEntity.h"
+	"src/world/level/tile/entity/RecordPlayerTileEntity.cpp"
+	"src/world/level/tile/entity/RecordPlayerTileEntity.h"
+	"src/world/level/tile/entity/DispenserTileEntity.cpp"
+	"src/world/level/tile/entity/DispenserTileEntity.h"
+	"src/world/level/tile/entity/SignTileEntity.cpp"
+	"src/world/level/tile/entity/SignTileEntity.h"
+	"src/world/level/tile/entity/MobSpawnerTileEntity.cpp"
+	"src/world/level/tile/entity/MobSpawnerTileEntity.h"
+	"src/world/level/tile/entity/PistonTileEntity.cpp"
+	"src/world/level/tile/entity/PistonTileEntity.h"
+	"src/world/entity/projectile/EntitySnowball.cpp"
+	"src/world/entity/projectile/EntitySnowball.h"
+	"src/world/entity/projectile/EntityThrownEgg.cpp"
+	"src/world/entity/projectile/EntityThrownEgg.h"
+	
+	"src/world/level/tile/CactusTile.cpp"
+	"src/world/level/tile/CactusTile.h"
+	"src/world/level/tile/BookshelfTile.cpp"
+	"src/world/level/tile/BookshelfTile.h"
+	"src/world/level/tile/ClothTile.cpp"
+	"src/world/level/tile/ClothTile.h"
+	"src/world/level/tile/ClayTile.cpp"
+	"src/world/level/tile/ClayTile.h"
+	"src/world/level/tile/DeadBushTile.cpp"
+	"src/world/level/tile/DeadBushTile.h"
+	"src/world/level/tile/IceTile.cpp"
+	"src/world/level/tile/IceTile.h"
+	"src/world/level/tile/SnowTile.cpp"
+	"src/world/level/tile/SnowTile.h"
+	"src/world/level/tile/FlowerTile.cpp"
+	"src/world/level/tile/FlowerTile.h"
+	"src/world/level/tile/FenceTile.cpp"
+	"src/world/level/tile/FenceTile.h"
+	"src/world/level/tile/FireTile.cpp"
+	"src/world/level/tile/FireTile.h"
+	"src/world/level/tile/GlassTile.cpp"
+	"src/world/level/tile/GlassTile.h"
+	"src/world/level/tile/DoorTile.cpp"
+	"src/world/level/tile/DoorTile.h"
+	"src/world/level/tile/GlowStoneTile.cpp"
+	"src/world/level/tile/GlowStoneTile.h"
+	"src/world/level/tile/DirtTile.cpp"
+	"src/world/level/tile/DirtTile.h"
+	"src/world/level/tile/GrassTile.cpp"
+	"src/world/level/tile/GrassTile.h"
+	"src/world/level/tile/WoodTile.cpp"
+	"src/world/level/tile/WoodTile.h"
+	"src/world/level/tile/GravelTile.cpp"
+	"src/world/level/tile/GravelTile.h"
+	"src/world/level/tile/CropsTile.cpp"
+	"src/world/level/tile/CropsTile.h"
+	"src/world/level/tile/FarmlandTile.cpp"
+	"src/world/level/tile/FarmlandTile.h"
+	"src/world/level/tile/MushroomTile.cpp"
+	"src/world/level/tile/MushroomTile.h"
+	"src/world/level/tile/DispenserTile.cpp"
+	"src/world/level/tile/DispenserTile.h"
+	"src/world/level/tile/NoteTile.cpp"
+	"src/world/level/tile/NoteTile.h"
+	"src/world/level/tile/SignTile.cpp"
+	"src/world/level/tile/SignTile.h"
+	"src/world/level/tile/JukeboxTile.cpp"
+	"src/world/level/tile/JukeboxTile.h"
+	"src/world/level/tile/SnowBlockTile.cpp"
+	"src/world/level/tile/SnowBlockTile.h"
+	"src/world/level/tile/SoulSandTile.cpp"
+	"src/world/level/tile/SoulSandTile.h"
+	"src/world/level/tile/LadderTile.cpp"
+	"src/world/level/tile/LadderTile.h"
+	"src/world/level/tile/SpongeTile.cpp"
+	"src/world/level/tile/SpongeTile.h"
+	"src/world/level/tile/PortalTile.cpp"
+	"src/world/level/tile/PortalTile.h"
+	"src/world/level/tile/PumpkinTile.cpp"
+	"src/world/level/tile/PumpkinTile.h"
+	"src/world/level/tile/TrapDoorTile.cpp"
+	"src/world/level/tile/TrapDoorTile.h"
+	"src/world/level/tile/ReedTile.cpp"
+	"src/world/level/tile/ReedTile.h"
+	"src/world/level/tile/LeafTile.cpp"
+	"src/world/level/tile/LeafTile.h"
+	"src/world/level/tile/LiquidTile.cpp"
+	"src/world/level/tile/LiquidTile.h"
+	"src/world/level/tile/SandTile.cpp"
+	"src/world/level/tile/SandStoneTile.cpp"
+	"src/world/level/tile/SandStoneTile.h"
+	"src/world/level/tile/SandTile.h"
+	"src/world/level/tile/TallGrassTile.cpp"
+	"src/world/level/tile/TallGrassTile.h"
+	"src/world/level/tile/StoneTile.cpp"
+	"src/world/level/tile/StoneTile.h"
+	"src/world/level/tile/WorkbenchTile.cpp"
+	"src/world/level/tile/WorkbenchTile.h"
+	"src/world/level/tile/FurnaceTile.cpp"
+	"src/world/level/tile/FurnaceTile.h"
+	"src/world/level/tile/SlabTile.cpp"
+	"src/world/level/tile/SlabTile.h"
+	"src/world/level/tile/StairTile.cpp"
+	"src/world/level/tile/StairTile.h"
+	"src/world/level/tile/Tile.cpp"
+	"src/world/level/tile/Tile.h"
+	"src/world/level/tile/OreTile.cpp"
+	"src/world/level/tile/OreTile.h"
+	"src/world/level/tile/RedstoneOreTile.cpp"
+	"src/world/level/tile/RedstoneOreTile.h"
+	"src/world/level/tile/RedStoneDustTile.cpp"
+	"src/world/level/tile/RedStoneDustTile.h"
+	"src/world/level/tile/TransparentTile.cpp"
+	"src/world/level/tile/TransparentTile.h"
+	"src/world/level/tile/TreeTile.cpp"
+	"src/world/level/tile/TreeTile.h"
+	"src/world/level/tile/TNTTile.cpp"
+	"src/world/level/tile/TNTTile.h"
+	"src/world/level/tile/TorchTile.cpp"
+	"src/world/level/tile/TorchTile.h"
+	"src/world/level/tile/NotGateTile.cpp"
+	"src/world/level/tile/NotGateTile.h"
+	"src/world/level/tile/SaplingTile.cpp"
+	"src/world/level/tile/SaplingTile.h"
+	"src/world/level/tile/WebTile.cpp"
+	"src/world/level/tile/WebTile.h"
+	"src/world/level/tile/LeverTile.cpp"
+	"src/world/level/tile/LeverTile.h"
+	"src/world/level/tile/PressurePlateTile.cpp"
+	"src/world/level/tile/PressurePlateTile.h"
+	"src/world/level/tile/ButtonTile.cpp"
+	"src/world/level/tile/ButtonTile.h"
+	"src/world/level/tile/RepeaterTile.cpp"
+	"src/world/level/tile/RepeaterTile.h"
+	"src/world/level/tile/RailLogic.cpp"
+	"src/world/level/tile/RailLogic.h"
+	"src/world/level/tile/RailTile.cpp"
+	"src/world/level/tile/RailTile.h"
+	"src/world/level/tile/DetectorRailTile.cpp"
+	"src/world/level/tile/DetectorRailTile.h"
+	"src/world/level/tile/ChestTile.cpp"
+	"src/world/level/tile/ChestTile.h"
+	"src/world/level/tile/LockedChestTile.cpp"
+	"src/world/level/tile/LockedChestTile.h"
+	"src/world/level/tile/BedTile.cpp"
+	"src/world/level/tile/BedTile.h"
+	"src/world/level/tile/PistonBaseTile.cpp"
+	"src/world/level/tile/PistonBaseTile.h"
+	"src/world/level/tile/PistonExtensionTile.cpp"
+	"src/world/level/tile/PistonExtensionTile.h"
+	"src/world/level/tile/PistonMovingTile.cpp"
+	"src/world/level/tile/PistonMovingTile.h"
+	"src/world/level/tile/PistonTextures.h"
+	"src/world/level/tile/MobSpawnerTile.cpp"
+	"src/world/level/tile/MobSpawnerTile.h"
+	"src/world/level/tile/CakeTile.cpp"
+	"src/world/level/tile/CakeTile.h"
+
+	"src/world/phys/AABB.cpp"
+	"src/world/phys/AABB.h"
+	"src/world/phys/HitResult.cpp"
+	"src/world/phys/HitResult.h"
+	"src/world/phys/Vec3.cpp"
+	"src/world/phys/Vec3.h"
+
+	"src/network/NetHandler.cpp"
+	"src/network/NetHandler.h"
+	"src/network/NetClientHandler.cpp"
+	"src/network/NetClientHandler.h"
+	"src/network/NetworkManager.cpp"
+	"src/network/NetworkManager.h"
+	"src/network/DataWatcher.cpp"
+	"src/network/DataWatcher.h"
+	"src/network/Packet.cpp"
+	"src/network/Packet.h"
+	"src/network/PacketCore.cpp"
+	"src/network/PacketCore.h"
+	"src/network/PacketAlphaPlace.cpp"
+	"src/network/PacketAlphaPlace.h"
+	"src/network/PacketDataStream.cpp"
+	"src/network/PacketDataStream.h"
+	"src/network/PacketEntity.cpp"
+	"src/network/PacketEntity.h"
+	"src/network/PacketWindow.cpp"
+	"src/network/PacketWindow.h"
+	"src/network/PacketWorld.cpp"
+	"src/network/PacketWorld.h"
+	
+	"src/java/BufferedImage.cpp"
+	"src/java/BufferedImage.h"
+	"src/java/File.cpp"
+	"src/java/File.h"
+	"src/java/IOUtil.cpp"
+	"src/java/IOUtil.h"
+	"src/java/Math.cpp"
+	"src/java/Math.h"
+	"src/java/Random.cpp"
+	"src/java/Random.h"
+	"src/java/Number.h"
+	"src/java/StrictMath.cpp"
+	"src/java/StrictMath.h"
+	"src/java/Resource.h"
+	"src/java/Runtime.h"
+	"src/java/String.cpp"
+	"src/java/String.h"
+	"src/java/System.cpp"
+	"src/java/System.h"
+	"src/java/Type.h"
+	
+	"src/external/stb_image.cpp"
+	"external/zlib/contrib/minizip/ioapi.c"
+	"external/zlib/contrib/minizip/unzip.c"
+)
+
+# Add webOS-specific sources with normal CMake conditionals.  These are
+# platform sources, not generator-expression source entries; using an if()
+# here keeps CMake from treating the quoted generator expression as a literal
+# source path during generation.
+if(B173_WEBOS)
+	list(APPEND McBetaCpp_SOURCES
+		"src/pc/webos/WebOSInput.cpp"
+		"src/pc/webos/WebOSInput.h"
+		"src/pc/webos/WebOSLog.cpp"
+		"src/pc/webos/WebOSLog.h"
+		"src/pc/webos/GLES2Compat.cpp"
+		"src/pc/webos/GLES2Compat.h"
+	)
+endif()
+
+add_library(McBetaCppCore OBJECT
+	${McBetaCpp_SOURCES}
+
+	"src/pc/CrashHandler.cpp"
+	"src/pc/CrashHandler.h"
+	"src/pc/OpenGL.h"
+	"src/pc/GLTrace.cpp"
+	"src/pc/GLTrace.h"
+
+	"src/pc/external/SDLException.h"
+	"src/pc/external/stb_vorbis.cpp"
+	"src/pc/external/stb_vorbis.h"
+
+	"src/pc/lwjgl/Display.cpp"
+	"src/pc/lwjgl/Display.h"
+	"src/pc/lwjgl/GLContext.cpp"
+	"src/pc/lwjgl/GLContext.h"
+	"src/pc/lwjgl/Keyboard.cpp"
+	"src/pc/lwjgl/Keyboard.h"
+	"src/pc/lwjgl/Mouse.cpp"
+	"src/pc/lwjgl/Mouse.h"
+
+)
+
+add_executable(McBetaCpp "src/pc/Main.cpp")
+target_link_libraries(McBetaCpp PRIVATE McBetaCppCore)
+
+# webOS ARM TVs can ship an older libstdc++.so.6 than the SDK used to build
+# this program. Keep the C++ runtime inside the executable so it does not
+# request GLIBCXX_3.4.29+ / CXXABI_* symbols from the TV. SDL2/LGNC/libc stay
+# dynamic.
+if(B173_WEBOS AND UNIX AND B173_STATIC_CXX_RUNTIME)
+	target_link_options(McBetaCpp PRIVATE -static-libstdc++ -static-libgcc)
+	message(STATUS "McBetaCpp: static libstdc++ + libgcc enabled")
+endif()
+
+add_executable(McBetaCppStress EXCLUDE_FROM_ALL
+	"src/tools/stress/StressMain.cpp"
+	"src/tools/stress/StressHarness.cpp"
+	"src/tools/stress/Scenarios.cpp"
+	"src/tools/stress/Sha256.cpp"
+	"src/tools/stress/Sha256.h"
+	"src/tools/stress/StateDigest.cpp"
+	"src/tools/stress/StateDigest.h"
+)
+
+
+add_executable(McBetaCppLightCacheSmoke EXCLUDE_FROM_ALL "src/tools/LightCacheSmoke.cpp")
+target_link_libraries(McBetaCppLightCacheSmoke PRIVATE McBetaCppCore)
+target_link_libraries(McBetaCppStress PRIVATE McBetaCppCore)
+target_include_directories(McBetaCppCore PUBLIC "src/pc")
+
+target_include_directories(McBetaCppCore PUBLIC "src")
+
+# Compile platform specific code
+if(WIN32)
+	target_sources(McBetaCppCore PRIVATE
+		"src/pc/win32/java/File.cpp"
+		"src/pc/win32/java/Resource.cpp"
+		"src/pc/win32/java/Runtime.cpp"
+		"src/pc/win32/McBetaCpp.rc"
+	)
+
+	target_compile_definitions(McBetaCppCore PUBLIC MC_WIN32)
+elseif(APPLE)
+	#message(FATAL_ERROR "MacOS is not supported yet.")
+	target_sources(McBetaCppCore PRIVATE
+		"src/pc/linux/java/File.cpp"
+		"src/pc/linux/java/Resource.cpp"
+		"src/pc/linux/java/Runtime.cpp"
+	)
+elseif(UNIX)
+	target_sources(McBetaCppCore PRIVATE
+		"src/pc/linux/java/File.cpp"
+		"src/pc/linux/java/Resource.cpp"
+		"src/pc/linux/java/Runtime.cpp"
+	)
+	
+	target_compile_definitions(McBetaCppCore PUBLIC MC_LINUX)
+endif()
+
+# Use C++14
+set_target_properties(McBetaCppCore McBetaCpp McBetaCppStress McBetaCppLightCacheSmoke PROPERTIES
+	CXX_STANDARD 14
+	CXX_STANDARD_REQUIRED YES
+	CXX_EXTENSIONS NO
+)
+
+# Java numeric expressions depend on their intermediate rounding points.
+if(MSVC)
+	set_source_files_properties(src/java/Random.cpp src/java/StrictMath.cpp src/util/Mth.cpp
+		src/world/entity/Entity.cpp src/world/phys/AABB.cpp src/world/phys/Vec3.cpp
+		PROPERTIES COMPILE_OPTIONS "/fp:strict")
+else()
+	set_source_files_properties(src/java/Random.cpp src/java/StrictMath.cpp src/util/Mth.cpp
+		src/world/entity/Entity.cpp src/world/phys/AABB.cpp src/world/phys/Vec3.cpp
+		PROPERTIES COMPILE_OPTIONS "-fno-fast-math;-ffp-contract=off")
+endif()
+
+option(B173_TARGET_ALPHAPLACE "Build the AlphaPlace client target" OFF)
+if(B173_TARGET_ALPHAPLACE)
+	target_compile_definitions(McBetaCppCore PUBLIC B173_TARGET_ALPHAPLACE=1)
+endif()
+
+option(B173_ENABLE_GL_TRACE "Compile the logical GL trace in Debug builds" OFF)
+if(B173_ENABLE_GL_TRACE)
+	target_compile_definitions(McBetaCppCore PUBLIC $<$<CONFIG:Debug>:B173_GL_TRACE>)
+endif()
+
+option(B173_ENABLE_SPC "Enable non-vanilla single-player commands" OFF)
+if(B173_ENABLE_SPC)
+	target_compile_definitions(McBetaCppCore PUBLIC B173_ENABLE_SPC)
+endif()
+
+option(B173_FAST_LIGHT_ACCESS "Use the LightNeighborhood brightness accessor in lighting updates (benchmark gated)" OFF)
+if(B173_FAST_LIGHT_ACCESS)
+	target_compile_definitions(McBetaCppCore PUBLIC B173_FAST_LIGHT_ACCESS)
+endif()
+
+# Geometry rollback switches; always defined explicitly (=0/1) so the header
+# #ifndef defaults never decide silently.
+option(B173_COMPACT_TERRAIN_VERTEX "Use the 28-byte compact terrain vertex format" ON)
+option(B173_INDEXED_TERRAIN "Render terrain with indexed quads and a shared index buffer" ON)
+option(B173_REGION_RENDERER "Pool terrain storage by render region while retaining exact per-chunk transforms" OFF)
+option(B173_CACHE_CLOUDS "Reuse exact fancy-cloud geometry between depth and color passes" OFF)
+target_compile_definitions(McBetaCppCore PUBLIC
+	B173_COMPACT_TERRAIN_VERTEX=$<BOOL:${B173_COMPACT_TERRAIN_VERTEX}>
+	B173_INDEXED_TERRAIN=$<BOOL:${B173_INDEXED_TERRAIN}>
+	B173_REGION_RENDERER=$<BOOL:${B173_REGION_RENDERER}>
+	B173_CACHE_CLOUDS=$<BOOL:${B173_CACHE_CLOUDS}>
+)
+
+# Optional Release IPO/LTO, gated on toolchain support. Per-source strict-FP
+# options above are unaffected; no fast-math anywhere.
+option(B173_ENABLE_IPO "Enable interprocedural optimization (LTO) for Release builds when supported" OFF)
+if(B173_ENABLE_IPO)
+	include(CheckIPOSupported)
+	check_ipo_supported(RESULT B173_IPO_SUPPORTED OUTPUT B173_IPO_ERROR LANGUAGES C CXX)
+	if(B173_IPO_SUPPORTED)
+		set_target_properties(McBetaCppCore McBetaCpp McBetaCppStress McBetaCppLightCacheSmoke PROPERTIES
+			INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE
+			INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE
+		)
+		message(STATUS "B173: Release IPO/LTO enabled")
+	else()
+		message(STATUS "B173: IPO/LTO unavailable: ${B173_IPO_ERROR}")
+	endif()
+endif()
+
+# Profile-guided optimization: B173_PGO = OFF (default), GENERATE (instrumented
+# build), or USE (rebuild from collected profiles). USE fails at configure when
+# required profile files are missing. Regenerate the training corpus after
+# source changes; profiles live in B173_PGO_DIR.
+set(B173_PGO "OFF" CACHE STRING "Profile-guided optimization mode: OFF, GENERATE, or USE")
+set_property(CACHE B173_PGO PROPERTY STRINGS OFF GENERATE USE)
+set(B173_PGO_DIR "${CMAKE_BINARY_DIR}/pgo" CACHE PATH "Directory holding PGO profile data")
+if(NOT B173_PGO MATCHES "^(OFF|GENERATE|USE)$")
+	message(FATAL_ERROR "B173_PGO must be OFF, GENERATE, or USE (got '${B173_PGO}')")
+endif()
+
+if(NOT B173_PGO STREQUAL "OFF")
+	file(MAKE_DIRECTORY "${B173_PGO_DIR}")
+	set(B173_PGO_TARGETS McBetaCppCore McBetaCpp McBetaCppStress)
+	set(B173_PGO_CFG "$<OR:$<CONFIG:Release>,$<CONFIG:RelWithDebInfo>>")
+
+	# Train the game module through its own --stress entry. Keep the same
+	# translation units in GENERATE and USE builds.
+	target_sources(McBetaCpp PRIVATE
+		"src/tools/stress/StressMain.cpp"
+		"src/tools/stress/StressHarness.cpp"
+		"src/tools/stress/Scenarios.cpp"
+		"src/tools/stress/Sha256.cpp"
+		"src/tools/stress/StateDigest.cpp"
+	)
+	target_compile_definitions(McBetaCpp PRIVATE B173_PGO_STRESS_EMBED)
+
+	if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+		# MSVC PGO requires whole-program optimization objects.
+		if(NOT B173_ENABLE_IPO OR NOT B173_IPO_SUPPORTED)
+			foreach(tgt IN LISTS B173_PGO_TARGETS)
+				target_compile_options(${tgt} PRIVATE "$<${B173_PGO_CFG}:/GL>")
+			endforeach()
+		endif()
+		foreach(exe McBetaCpp McBetaCppStress)
+			set(pgd "${B173_PGO_DIR}/${exe}.pgd")
+			if(B173_PGO STREQUAL "GENERATE")
+				target_link_options(${exe} PRIVATE
+					"$<${B173_PGO_CFG}:/LTCG>" "$<${B173_PGO_CFG}:/GENPROFILE:EXACT,PGD=${pgd}>")
+			else() # USE
+				if(NOT EXISTS "${pgd}")
+					message(FATAL_ERROR
+						"B173_PGO=USE but '${pgd}' is missing. Build and run a "
+						"B173_PGO=GENERATE tree first (training .pgc files merge "
+						"into the .pgd at link), or configure with B173_PGO=OFF "
+						"for an ordinary Release build.")
+				endif()
+				target_link_options(${exe} PRIVATE
+					"$<${B173_PGO_CFG}:/LTCG>" "$<${B173_PGO_CFG}:/USEPROFILE:PGD=${pgd}>")
+			endif()
+		endforeach()
+		# LightCacheSmoke links the /GL core objects but is never profile-trained.
+		target_link_options(McBetaCppLightCacheSmoke PRIVATE "$<${B173_PGO_CFG}:/LTCG>")
+	elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND NOT CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+		if(B173_PGO STREQUAL "GENERATE")
+			foreach(tgt IN LISTS B173_PGO_TARGETS)
+				target_compile_options(${tgt} PRIVATE -fprofile-generate=${B173_PGO_DIR})
+			endforeach()
+			foreach(exe McBetaCpp McBetaCppStress McBetaCppLightCacheSmoke)
+				target_link_options(${exe} PRIVATE -fprofile-generate=${B173_PGO_DIR})
+			endforeach()
+		else() # USE
+			set(B173_PGO_PROFILE "${B173_PGO_DIR}/merged.profdata" CACHE FILEPATH
+				"Merged llvm-profdata file for B173_PGO=USE (Clang)")
+			if(NOT EXISTS "${B173_PGO_PROFILE}")
+				message(FATAL_ERROR
+					"B173_PGO=USE but '${B173_PGO_PROFILE}' is missing. Run the "
+					"instrumented binaries, merge with "
+					"'llvm-profdata merge -output=${B173_PGO_PROFILE} ${B173_PGO_DIR}/*.profraw', "
+					"or configure with B173_PGO=OFF.")
+			endif()
+			foreach(tgt IN LISTS B173_PGO_TARGETS)
+				target_compile_options(${tgt} PRIVATE -fprofile-use=${B173_PGO_PROFILE})
+			endforeach()
+			foreach(exe McBetaCpp McBetaCppStress McBetaCppLightCacheSmoke)
+				target_link_options(${exe} PRIVATE -fprofile-use=${B173_PGO_PROFILE})
+			endforeach()
+		endif()
+	elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+		if(B173_PGO STREQUAL "GENERATE")
+			foreach(tgt IN LISTS B173_PGO_TARGETS)
+				target_compile_options(${tgt} PRIVATE -fprofile-generate "-fprofile-dir=${B173_PGO_DIR}")
+			endforeach()
+			foreach(exe McBetaCpp McBetaCppStress McBetaCppLightCacheSmoke)
+				target_link_options(${exe} PRIVATE -fprofile-generate)
+			endforeach()
+		else() # USE
+			file(GLOB B173_PGO_GCDA "${B173_PGO_DIR}/*.gcda" "${B173_PGO_DIR}/**/*.gcda")
+			if(NOT B173_PGO_GCDA)
+				message(FATAL_ERROR
+					"B173_PGO=USE but no .gcda profiles found in '${B173_PGO_DIR}'. "
+					"Run a B173_PGO=GENERATE build's binaries first, or configure "
+					"with B173_PGO=OFF.")
+			endif()
+			foreach(tgt IN LISTS B173_PGO_TARGETS)
+				target_compile_options(${tgt} PRIVATE -fprofile-use "-fprofile-dir=${B173_PGO_DIR}" -fprofile-correction)
+			endforeach()
+			foreach(exe McBetaCpp McBetaCppStress McBetaCppLightCacheSmoke)
+				target_link_options(${exe} PRIVATE -fprofile-use "-fprofile-dir=${B173_PGO_DIR}" -fprofile-correction)
+			endforeach()
+		endif()
+	else()
+		message(FATAL_ERROR "B173_PGO is only implemented for MSVC, GNU-frontend Clang, and GCC. Configure with B173_PGO=OFF.")
+	endif()
+	message(STATUS "B173: PGO mode ${B173_PGO}, data in ${B173_PGO_DIR}")
+endif()
+
+# Optional precompiled headers (build-time only). Needs CMake 3.16; project
+# minimum stays 3.14. CXX-only: the core target also compiles C (minizip) and
+# RC sources, which must not receive a C++ PCH.
+if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.16)
+	option(B173_USE_PCH "Use precompiled standard-library headers (CMake >= 3.16)" OFF)
+	if(B173_USE_PCH)
+		set_source_files_properties(src/java/Random.cpp src/java/StrictMath.cpp src/util/Mth.cpp
+			src/world/entity/Entity.cpp src/world/phys/AABB.cpp src/world/phys/Vec3.cpp
+			PROPERTIES SKIP_PRECOMPILE_HEADERS YES)
+		target_precompile_headers(McBetaCppCore PRIVATE
+			"$<$<COMPILE_LANGUAGE:CXX>:<algorithm$<ANGLE-R>>"
+			"$<$<COMPILE_LANGUAGE:CXX>:<cmath$<ANGLE-R>>"
+			"$<$<COMPILE_LANGUAGE:CXX>:<cstdint$<ANGLE-R>>"
+			"$<$<COMPILE_LANGUAGE:CXX>:<memory$<ANGLE-R>>"
+			"$<$<COMPILE_LANGUAGE:CXX>:<string$<ANGLE-R>>"
+			"$<$<COMPILE_LANGUAGE:CXX>:<vector$<ANGLE-R>>"
+		)
+	endif()
+
+	option(B173_USE_UNITY "Combine compatible core translation units for developer builds" OFF)
+	set_target_properties(McBetaCppCore PROPERTIES UNITY_BUILD ${B173_USE_UNITY})
+	# These groups reuse TU-local helpers or depend on platform include order.
+	get_target_property(B173_CORE_FILES McBetaCppCore SOURCES)
+	foreach(source IN LISTS B173_CORE_FILES)
+		if(source MATCHES "^src/(pc|tools|network|client/gui|world/item|world/entity/item)/" OR
+			source STREQUAL "src/world/level/SaveConverterMcRegion.cpp" OR
+			source STREQUAL "src/java/BufferedImage.cpp" OR source STREQUAL "src/client/ScreenShotHelper.cpp")
+			set_source_files_properties("${source}" PROPERTIES SKIP_UNITY_BUILD_INCLUSION YES)
+		endif()
+	endforeach()
+	set_source_files_properties(src/java/Random.cpp src/java/StrictMath.cpp src/util/Mth.cpp
+		src/world/entity/Entity.cpp src/world/phys/AABB.cpp src/world/phys/Vec3.cpp
+		PROPERTIES SKIP_UNITY_BUILD_INCLUSION YES)
+endif()
+
+# Third party
+add_subdirectory("external/glad" EXCLUDE_FROM_ALL)
+target_link_libraries(McBetaCppCore PUBLIC glad)
+
+# glad uses dlsym() for runtime GL symbol loading on the webOS ARM
+# Wayland target. Keep libdl explicitly on the final link line.
+if(B173_WEBOS AND UNIX)
+	# GLAD uses dlsym(), and the Minecraft networking/GUI code uses
+	# pthread_join() and other POSIX thread APIs. webOS's linker requires
+	# both DSOs to be present explicitly on the final link line.
+	target_link_libraries(McBetaCppCore PUBLIC dl pthread)
+endif()
+
+# Use the exact shared SDL2 package from the working Wayland 3D demo.
+# It contains the webOS Wayland/xkbcommon backend that the TV accepts.
+if(B173_WEBOS)
+	if(NOT EXISTS "${B173_WEBOS_SDL2_ROOT}/lib/libSDL2-2.0.so.0.3000.12")
+		message(FATAL_ERROR "Missing webOS SDL2 ABI package: ${B173_WEBOS_SDL2_ROOT}/lib/libSDL2-2.0.so.0.3000.12")
+	endif()
+	add_library(SDL2-webos SHARED IMPORTED GLOBAL)
+	set_target_properties(SDL2-webos PROPERTIES
+		IMPORTED_LOCATION "${B173_WEBOS_SDL2_ROOT}/lib/libSDL2-2.0.so.0.3000.12"
+		INTERFACE_INCLUDE_DIRECTORIES "${B173_WEBOS_SDL2_ROOT}/include/SDL2"
+	)
+	target_link_libraries(McBetaCppCore PUBLIC SDL2-webos)
+	target_include_directories(McBetaCppCore PUBLIC "${B173_WEBOS_SDL2_ROOT}/include/SDL2")
+	target_compile_definitions(McBetaCppCore PUBLIC MC_WEBOS=1)
+	if(B173_WEBOS_LGNC)
+		target_compile_definitions(McBetaCppCore PUBLIC MC_WEBOS_LGNC=1)
+	endif()
+
+	# The webOS SDK sysroot supplies the real TV-side LGNC ABI.
+	find_library(B173_LGNC_LIBRARY NAMES lgncopenapi PATHS "${CMAKE_SYSROOT}/usr/lib" "${CMAKE_SYSROOT}/lib" NO_DEFAULT_PATH)
+	if(B173_WEBOS_LGNC AND B173_LGNC_LIBRARY)
+		target_link_libraries(McBetaCppCore PUBLIC "${B173_LGNC_LIBRARY}")
+		target_include_directories(McBetaCppCore PUBLIC "${CMAKE_SOURCE_DIR}/vendor/webos-userland/include")
+	else()
+		message(WARNING "LGNC library not found in sysroot; building SDL/Wayland-only input")
+	endif()
+
+	# The executable is bin/McBetaCpp; keep the working SDL2 beside it in bin/lib.
+	set_target_properties(McBetaCpp PROPERTIES
+		BUILD_RPATH "\$ORIGIN/lib"
+		INSTALL_RPATH "\$ORIGIN/lib"
+	)
+endif()
+
+add_subdirectory("external/zlib" EXCLUDE_FROM_ALL)
+
+target_link_libraries(McBetaCppCore PUBLIC zlibstatic)
+target_include_directories(McBetaCppCore PUBLIC "external/zlib")
+target_include_directories(McBetaCppCore PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/external/zlib")
+target_include_directories(McBetaCppCore PUBLIC "external/zlib/contrib/minizip")
+
+target_include_directories(McBetaCppCore PUBLIC "external/stb")
+target_include_directories(McBetaCppCore PUBLIC "external/gzip-hpp/include")
+
+
+
+# Output to bin/ directory
+set(B173_OUTPUT_SUFFIX "" CACHE STRING "Suffix appended to executable names, for side-by-side variant builds")
+set_target_properties(McBetaCpp McBetaCppStress McBetaCppLightCacheSmoke PROPERTIES
+	RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin"
+	OUTPUT_NAME "McBetaCpp${B173_OUTPUT_SUFFIX}"
+)
+set_target_properties(McBetaCppStress PROPERTIES OUTPUT_NAME "McBetaCppStress${B173_OUTPUT_SUFFIX}")
+set_target_properties(McBetaCppLightCacheSmoke PROPERTIES OUTPUT_NAME "McBetaCppLightCacheSmoke${B173_OUTPUT_SUFFIX}")
+
+# Shared runtime files. The resource tree is staged into bin/resource only when
+# a resource file changes (stamp-driven). cmake/StageResources.cmake copies per
+# file with copy_if_different and prunes only files a previous staging run
+# created (tracked in a manifest); unrelated runtime files in bin/ are never
+# touched. CONFIGURE_DEPENDS reruns the glob when files are added or removed.
+file(GLOB_RECURSE B173_RESOURCE_FILES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/resource/*")
+file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/McBetaCppResources.inputs" CONTENT "${B173_RESOURCE_FILES}\n")
+set(B173_RESOURCE_STAMP "${CMAKE_BINARY_DIR}/McBetaCppResources.stamp")
+add_custom_command(
+	OUTPUT "${B173_RESOURCE_STAMP}"
+	COMMAND ${CMAKE_COMMAND}
+		-DSOURCE_DIR=${CMAKE_SOURCE_DIR}/resource
+		-DDEST_DIR=${CMAKE_SOURCE_DIR}/bin/resource
+		-DMANIFEST=${CMAKE_BINARY_DIR}/McBetaCppResources.manifest
+		-P "${CMAKE_SOURCE_DIR}/cmake/StageResources.cmake"
+	COMMAND ${CMAKE_COMMAND} -E touch "${B173_RESOURCE_STAMP}"
+	DEPENDS ${B173_RESOURCE_FILES} "${CMAKE_BINARY_DIR}/McBetaCppResources.inputs"
+		"${CMAKE_SOURCE_DIR}/cmake/StageResources.cmake"
+	COMMENT "Staging resource/ into bin/resource"
+	VERBATIM
+)
+if(WIN32)
+	add_custom_target(McBetaCppResources
+		COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_SOURCE_DIR}/bin"
+		DEPENDS "${B173_RESOURCE_STAMP}"
+	)
+else()
+	add_custom_target(McBetaCppResources DEPENDS "${B173_RESOURCE_STAMP}")
+endif()
+add_dependencies(McBetaCpp McBetaCppResources)
+add_dependencies(McBetaCppStress McBetaCppResources)
+add_dependencies(McBetaCppLightCacheSmoke McBetaCppResources)
