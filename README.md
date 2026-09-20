@@ -1,5 +1,6 @@
 Mcbetacpp 1.7.3 for webos 
 
+
 its very cool and thats mine first homebrew for webos 
 
 controls:
@@ -39,3 +40,6 @@ todoh:
 add a gamepad support
 optimisate it more good to get 60 fps
 better controls
+
+credits:
+https://github.com/arceuss/beta1.7.3cpp arceuss for src 
