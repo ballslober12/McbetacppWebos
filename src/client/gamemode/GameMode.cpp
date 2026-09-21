@@ -1,0 +1,150 @@
+#include "client/gamemode/GameMode.h"
+
+#include "client/Minecraft.h"
+#include "world/item/ItemInstance.h"
+#include "world/entity/player/Player.h"
+#include "world/inventory/Container.h"
+#include "world/level/Level.h"
+#include "world/level/tile/StepSound.h"
+#include "world/level/tile/Tile.h"
+
+GameMode::GameMode(Minecraft &minecraft) : minecraft(minecraft)
+{
+
+}
+
+void GameMode::initLevel(std::shared_ptr<Level> level)
+{
+
+}
+
+void GameMode::startDestroyBlock(int_t x, int_t y, int_t z, Facing face)
+{
+	destroyBlock(x, y, z, face);
+}
+
+bool GameMode::destroyBlock(int_t x, int_t y, int_t z, Facing face)
+{
+	// Beta: Spawn block break particles (GameMode.java:27)
+	minecraft.particleEngine.destroy(x, y, z);
+
+	Level &level = *minecraft.level;
+	Tile *oldTile = Tile::tiles[level.getTile(x, y, z)];
+	int_t data = level.getData(x, y, z);
+	bool changed = level.setTile(x, y, z, 0);
+	if (oldTile != nullptr && changed)
+	{
+		oldTile->destroy(level, x, y, z, data);
+
+		// Play block destroy sound (Java: World.func_28106_e(2001, ...))
+		if (oldTile->soundType != nullptr)
+		{
+			StepSound *ss = oldTile->soundType;
+			level.playSoundEffect((double)x + 0.5, (double)y + 0.5, (double)z + 0.5,
+				ss->stepSoundDir(), (ss->getVolume() + 1.0f) / 2.0f, ss->getPitch() * 0.8f);
+		}
+	}
+	return changed;
+}
+
+void GameMode::continueDestroyBlock(int_t x, int_t y, int_t z, Facing face)
+{
+
+}
+
+void GameMode::stopDestroyBlock()
+{
+
+}
+
+void GameMode::render(float a)
+{
+
+}
+
+float GameMode::getPickRange()
+{
+	return 5.0f;
+}
+
+bool GameMode::useItem(std::shared_ptr<Player> &player, Level &level, ItemInstance *item)
+{
+	if (item == nullptr || item->isEmpty())
+		return false;
+
+	ItemInstance before = *item;
+	item->use(level, *player);
+	if (item->sameItem(before) && item->stackSize == before.stackSize)
+		return false;
+	if (item->isEmpty())
+		player->removeSelectedItem();
+	return true;
+}
+
+void GameMode::initPlayer(std::shared_ptr<Player> player)
+{
+
+}
+
+void GameMode::tick()
+{
+
+}
+
+bool GameMode::canHurtPlayer()
+{
+	return true;
+}
+
+void GameMode::adjustPlayer(std::shared_ptr<Player> player)
+{
+
+}
+
+bool GameMode::useItemOn(std::shared_ptr<Player> &player, Level &level, ItemInstance *item, int_t x, int_t y, int_t z, Facing face)
+{
+	int_t targetTileId = level.getTile(x, y, z);
+	if (targetTileId > 0)
+	{
+		Tile *targetTile = Tile::tiles[targetTileId];
+		if (targetTile != nullptr && targetTile->use(level, x, y, z, *player))
+			return true;
+	}
+
+	if (item == nullptr || item->isEmpty())
+		return false;
+
+	bool used = item->useOn(*player, level, x, y, z, face);
+	if (used && item->isEmpty())
+		player->removeSelectedItem();
+	return used;
+}
+
+std::shared_ptr<Player> GameMode::createPlayer(Level &level)
+{
+	return Util::make_shared<LocalPlayer>(minecraft, level, minecraft.user.get(), level.dimension->id);
+}
+
+void GameMode::interact(std::shared_ptr<Player> &player, std::shared_ptr<Entity> &entity)
+{
+	player->interact(entity);
+}
+
+void GameMode::attack(std::shared_ptr<Player> &player, std::shared_ptr<Entity> &entity)
+{
+	player->attack(entity);
+}
+
+std::unique_ptr<ItemInstance> GameMode::clickContainer(int_t windowId, int_t slot, int_t button,
+	bool shiftClick, Player &player)
+{
+	(void)windowId;
+	return player.craftingInventory->click(slot, button, shiftClick, player);
+}
+
+void GameMode::closeContainer(int_t windowId, Player &player)
+{
+	(void)windowId;
+	player.craftingInventory->onClosed(player);
+	player.craftingInventory = player.inventorySlots;
+}
