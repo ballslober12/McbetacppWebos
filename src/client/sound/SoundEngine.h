@@ -5,12 +5,13 @@
 #include "java/String.h"
 #include "java/Random.h"
 
-#include <AL/al.h>
-#include <AL/alc.h>
+#include "miniaudio.h"
 
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <memory>
+#include <cstdint>
 
 class Mob;
 
@@ -18,8 +19,9 @@ class SoundEngine
 {
 private:
 	static bool loaded;
-	ALCdevice *device = nullptr;
-	ALCcontext *context = nullptr;
+
+	ma_engine engine{};
+	bool engineInitialized = false;
 
 	SoundRepository sounds;
 	SoundRepository streamingSounds;
@@ -44,25 +46,53 @@ private:
 	};
 
 	std::unordered_map<std::string, SourceInfo> sourceInfoMap;
+
+	// Fully-decoded PCM (s16) for one sound file, shared by every channel currently
+	// playing it. Decoding happens once per file and is cached for the life of the
+	// engine, matching the old AL buffer cache.
+	struct DecodedAudio
+	{
+		std::vector<int16_t> pcm; // interleaved
+		ma_uint32 channels = 0;
+		ma_uint32 sampleRate = 0;
+		ma_uint64 frameCount = 0;
+	};
+	std::unordered_map<std::string, std::shared_ptr<DecodedAudio>> decodedCache;
+
+	// One playback slot: a lightweight reference into a shared DecodedAudio buffer
+	// (independent read cursor) bound to a ma_sound. Rebound to a new buffer every
+	// time the channel is reused for a different sound, mirroring how the old code
+	// rebound an OpenAL buffer onto a reused source.
+	struct Channel
+	{
+		ma_audio_buffer_ref bufferRef{};
+		ma_sound sound{};
+		bool soundInitialized = false;
+		std::shared_ptr<DecodedAudio> audio; // keeps PCM alive while bound
+	};
+
 	// Paulscode Library: fixed channel array + rotating cursor
-	// (channelIds[n] mirrors normalChannelSourceNames)
-	std::vector<ALuint> channelSources;
+	// (channels[n] mirrors normalChannelSourceNames)
+	std::vector<Channel> channels;
 	std::vector<std::string> channelIds;
 	int_t nextNormalChannel = 0;
-	std::unordered_map<std::string, ALuint> soundBuffers;
-	ALuint musicSource = 0;
-	ALuint streamingSource = 0;
-	// Paulscode default: 28 normal channels (streaming channels are separate)
+
+	Channel musicChannel;
+	bool musicChannelActive = false;
+	Channel streamingChannel;
+	bool streamingChannelActive = false;
+
+	// Paulscode default: 28 normal channels (streaming channel is separate)
 	static constexpr int_t MAX_SOURCES = 28;
 
 	float listenerX = 0.0f, listenerY = 0.0f, listenerZ = 0.0f;
 
-	bool initOpenAL();
-	void cleanupOpenAL();
-	ALuint getOrCreateSource(const std::string &id, bool streaming, bool priority = false);
+	bool initAudioDevice();
+	void cleanupAudioDevice();
+	int_t getOrCreateChannel(const std::string &id, bool priority = false);
 	void releaseSource(const std::string &id);
-	ALuint loadOGGFile(const std::string &filePath, bool isMUS = false);
-	bool loadSound(const Sound &sound, ALuint &buffer, bool isMUS = false);
+	std::shared_ptr<DecodedAudio> loadDecodedAudio(const std::string &filePath, bool isMUS = false);
+	bool bindChannel(Channel &channel, const std::shared_ptr<DecodedAudio> &audio, bool loop);
 	void checkAndReleaseFinishedSources();
 	void updateSourceGains();
 

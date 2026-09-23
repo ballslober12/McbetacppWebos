@@ -32,6 +32,10 @@ public:
 	float portalTime = 0.0f;
 	float oPortalTime = 0.0f;
 
+	// Debug menu toggle: cancels gravity and lets jump/sneak move straight
+	// up/down while held, bypassing normal Beta 1.7.3 physics entirely.
+	bool flying = false;
+
 private:
 	bool isInsidePortal = false;
 

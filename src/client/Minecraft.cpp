@@ -16,6 +16,7 @@
 #include "client/gui/ScreenSizeCalculator.h"
 #include "client/gui/ChatScreen.h"
 #include "client/gui/PauseScreen.h"
+#include "client/gui/DebugMenuScreen.h"
 #include "client/gui/AchievementToast.h"
 #include "client/gui/SleepScreen.h"
 #include "client/title/TitleScreen.h"
@@ -50,6 +51,7 @@
 #include "java/System.h"
 #include "java/Runtime.h"
 #include "java/File.h"
+#include "java/String.h"
 
 #include "util/Mth.h"
 #include "util/Profiler.h"
@@ -156,6 +158,10 @@ void Minecraft::init(std::shared_ptr<File> directory)
 	if (!unattended)
 		texturePackRepository.updateListAndSelect();
 	textures.setTileSize();
+
+	MC_STAGE("sound engine");
+	soundEngine.init(&options);
+	loadAllSounds();
 
 	MC_STAGE("font");
 	font = std::make_unique<Font>(options, u"/font/default.png", textures);
@@ -282,6 +288,53 @@ const std::shared_ptr<File> &Minecraft::getWorkingDirectory()
 	return workDir;
 }
 
+// mirrors Minecraft::fileDownloaded's category routing (sound/newsound -> sound
+// effects, music/newmusic -> background tracks), just done as one synchronous
+// disk scan at startup instead of per-file download callbacks.
+void Minecraft::loadAllSounds()
+{
+	std::unique_ptr<File> resourceDir(File::openResourceDirectory());
+	loadAllSoundsRecursive(resourceDir.get(), u"");
+}
+
+void Minecraft::loadAllSoundsRecursive(File *dir, const jstring &prefix)
+{
+	if (!dir || !dir->exists() || !dir->isDirectory())
+		return;
+
+	auto files = dir->listFiles();
+	for (auto &file : files)
+	{
+		if (file->isDirectory())
+		{
+			loadAllSoundsRecursive(file.get(), prefix + file->getName() + u"/");
+			continue;
+		}
+
+		jstring name = file->getName();
+		if (name.length() < 4)
+			continue;
+		jstring ext = name.substr(name.length() - 4);
+		if (ext != u".ogg" && ext != u".mus" && ext != u".wav")
+			continue;
+
+		jstring fullName = prefix + name;
+		size_t slashPos = fullName.find(u'/');
+		if (slashPos == jstring::npos)
+			continue;
+		jstring category = fullName.substr(0, slashPos);
+		jstring soundName = fullName.substr(slashPos + 1);
+		std::string path = String::toUTF8(file->toString());
+
+		if (category == u"sound" || category == u"newsound")
+			soundEngine.add(soundName, path);
+		else if (category == u"music" || category == u"newmusic")
+			soundEngine.addMusic(soundName, path);
+		else if (category == u"streaming")
+			soundEngine.addStreaming(soundName, path);
+	}
+}
+
 std::shared_ptr<Screen> Minecraft::createTitleScreen()
 {
 	if (ClientTarget::isAlphaPlace())
@@ -369,6 +422,7 @@ void Minecraft::checkGlError(const std::string &at)
 
 Minecraft::~Minecraft()
 {
+	soundEngine.destroy();
 	SPCCommand::setMessageFont(nullptr);
 	for (std::thread &thread : connectionThreads)
 	{
@@ -586,7 +640,8 @@ void Minecraft::run()
 
 			// Update sound listener position every frame
 			if (player != nullptr)
-		
+				soundEngine.update(player.get(), timer.a);
+
 			checkGlError("Pre render");
 #ifdef MC_WEBOS
 			webos::stage("main loop: render");
@@ -1057,6 +1112,12 @@ void Minecraft::tick()
 	if (!pause)
 		textures.tick();
 
+	if (!pause)
+	{
+		soundEngine.updateOptions();
+		soundEngine.playMusicTick();
+	}
+
 	if (screen == nullptr && player != nullptr)
 	{
 		if (player->health <= 0)
@@ -1158,6 +1219,8 @@ void Minecraft::tick()
 						options.thirdPersonView = !options.thirdPersonView;
 					if (lwjgl::Keyboard::getEventKey() == lwjgl::Keyboard::KEY_F8)
 						options.smoothCamera = !options.smoothCamera;
+					if (lwjgl::Keyboard::getEventKey() == lwjgl::Keyboard::KEY_F7 && player != nullptr)
+						setScreen(Util::make_shared<DebugMenuScreen>(*this));
 					if (lwjgl::Keyboard::getEventKey() == options.keyDrop.key && player != nullptr)
 						player->drop();
 					if (lwjgl::Keyboard::getEventKey() == options.keyInventory.key && player != nullptr)

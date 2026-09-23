@@ -13,7 +13,10 @@
 #include <cfloat>
 #include <algorithm>
 
-// stb_vorbis is compiled separately; we just need the decode function
+// stb_vorbis is compiled separately (src/pc/external/stb_vorbis.cpp); we just
+// need the decode function. We decode fully to PCM ourselves and hand the
+// result to miniaudio as a raw buffer (see loadDecodedAudio/bindChannel)
+// rather than routing files through miniaudio's own decoders.
 extern "C" {
 	typedef unsigned char uint8;
 	int stb_vorbis_decode_memory(const uint8 *mem, int len, int *channels, int *sample_rate, short **output);
@@ -39,115 +42,73 @@ void SoundEngine::init(Options *options)
 
 	if (!loaded && (options == nullptr || options->sound != 0.0f || options->music != 0.0f))
 	{
-		if (initOpenAL())
+		if (initAudioDevice())
 			loaded = true;
 	}
 }
 
-bool SoundEngine::initOpenAL()
+bool SoundEngine::initAudioDevice()
 {
-	device = alcOpenDevice(nullptr);
-	if (!device)
+	ma_engine_config engineConfig = ma_engine_config_init();
+	// Tuned the same way as the Butterscotch webOS port: a short, explicit
+	// period size avoids the device defaulting to something that underruns
+	// on TV audio hardware while still keeping latency low.
+	engineConfig.periodSizeInMilliseconds = 10;
+	engineConfig.channels = 2;
+
+	if (ma_engine_init(&engineConfig, &engine) != MA_SUCCESS)
 	{
-		std::cerr << "Failed to open OpenAL device" << std::endl;
+		std::cerr << "Failed to initialize miniaudio engine" << std::endl;
 		return false;
 	}
+	engineInitialized = true;
 
-	context = alcCreateContext(device, nullptr);
-	if (!context)
-	{
-		std::cerr << "Failed to create OpenAL context" << std::endl;
-		alcCloseDevice(device);
-		device = nullptr;
-		return false;
-	}
-
-	if (!alcMakeContextCurrent(context))
-	{
-		std::cerr << "Failed to make OpenAL context current" << std::endl;
-		alcDestroyContext(context);
-		alcCloseDevice(device);
-		context = nullptr;
-		device = nullptr;
-		return false;
-	}
-
-	channelSources.resize(MAX_SOURCES);
+	channels.assign(MAX_SOURCES, Channel());
 	channelIds.assign(MAX_SOURCES, std::string());
 	nextNormalChannel = 0;
-	alGenSources((ALsizei)channelSources.size(), channelSources.data());
-	ALenum err = alGetError();
-	if (err != AL_NO_ERROR)
-	{
-		std::cerr << "Failed to generate OpenAL sources: " << alGetString(err) << std::endl;
-		cleanupOpenAL();
-		return false;
-	}
 
-	alGenSources(1, &musicSource);
-	alGenSources(1, &streamingSource);
+	ma_engine_listener_set_position(&engine, 0, 0.0f, 0.0f, 0.0f);
+	ma_engine_listener_set_direction(&engine, 0, 0.0f, 0.0f, -1.0f);
+	ma_engine_listener_set_world_up(&engine, 0, 0.0f, 1.0f, 0.0f);
 
-	// Paulscode uses AL_INVERSE_DISTANCE (not CLAMPED)
-	alDistanceModel(AL_INVERSE_DISTANCE);
-	alDopplerFactor(1.0f);
-	alDopplerVelocity(343.0f);
-
-	alListener3f(AL_POSITION, 0.0f, 0.0f, 0.0f);
-	alListener3f(AL_VELOCITY, 0.0f, 0.0f, 0.0f);
-	float orientation[6] = { 0.0f, 0.0f, -1.0f, 0.0f, 1.0f, 0.0f };
-	alListenerfv(AL_ORIENTATION, orientation);
-
-	alGetError();
 	return true;
 }
 
-void SoundEngine::cleanupOpenAL()
+void SoundEngine::cleanupAudioDevice()
 {
-	for (ALuint source : channelSources)
+	for (Channel &channel : channels)
 	{
-		alSourceStop(source);
-		alSourcei(source, AL_BUFFER, 0);
+		if (channel.soundInitialized)
+		{
+			ma_sound_uninit(&channel.sound);
+			channel.soundInitialized = false;
+		}
+		channel.audio.reset();
 	}
+	channels.clear();
+	channelIds.clear();
 	sourceInfoMap.clear();
 
-	if (!channelSources.empty())
+	if (musicChannelActive)
 	{
-		alDeleteSources((ALsizei)channelSources.size(), channelSources.data());
-		channelSources.clear();
-		channelIds.clear();
+		ma_sound_uninit(&musicChannel.sound);
+		musicChannelActive = false;
 	}
+	musicChannel.audio.reset();
 
-	if (musicSource != 0)
+	if (streamingChannelActive)
 	{
-		alSourceStop(musicSource);
-		alSourcei(musicSource, AL_BUFFER, 0);
-		alDeleteSources(1, &musicSource);
-		musicSource = 0;
+		ma_sound_uninit(&streamingChannel.sound);
+		streamingChannelActive = false;
 	}
+	streamingChannel.audio.reset();
 
-	if (streamingSource != 0)
+	decodedCache.clear();
+
+	if (engineInitialized)
 	{
-		alSourceStop(streamingSource);
-		alSourcei(streamingSource, AL_BUFFER, 0);
-		alDeleteSources(1, &streamingSource);
-		streamingSource = 0;
-	}
-
-	for (auto &pair : soundBuffers)
-		alDeleteBuffers(1, &pair.second);
-	soundBuffers.clear();
-
-	if (context)
-	{
-		alcMakeContextCurrent(nullptr);
-		alcDestroyContext(context);
-		context = nullptr;
-	}
-
-	if (device)
-	{
-		alcCloseDevice(device);
-		device = nullptr;
+		ma_engine_uninit(&engine);
+		engineInitialized = false;
 	}
 }
 
@@ -156,7 +117,7 @@ void SoundEngine::updateOptions()
 {
 	if (!loaded && options && (options->sound != 0.0f || options->music != 0.0f))
 	{
-		if (initOpenAL())
+		if (initAudioDevice())
 			loaded = true;
 	}
 
@@ -164,18 +125,12 @@ void SoundEngine::updateOptions()
 	{
 		if (options->music == 0.0f)
 		{
-			if (musicSource != 0)
-			{
-				alSourceStop(musicSource);
-				alSourcei(musicSource, AL_BUFFER, 0);
-			}
+			if (musicChannelActive)
+				ma_sound_stop(&musicChannel.sound);
 		}
-		else if (musicSource != 0)
+		else if (musicChannelActive && ma_sound_is_playing(&musicChannel.sound))
 		{
-			ALint state;
-			alGetSourcei(musicSource, AL_SOURCE_STATE, &state);
-			if (state == AL_PLAYING || state == AL_PAUSED)
-				alSourcef(musicSource, AL_GAIN, options->music);
+			ma_sound_set_volume(&musicChannel.sound, options->music);
 		}
 	}
 }
@@ -185,7 +140,7 @@ void SoundEngine::destroy()
 {
 	if (loaded)
 	{
-		cleanupOpenAL();
+		cleanupAudioDevice();
 		loaded = false;
 	}
 }
@@ -211,17 +166,13 @@ void SoundEngine::addMusic(const jstring &name, const std::string &filePath)
 // SoundManager.java:88-106
 void SoundEngine::playMusicTick()
 {
-	if (!loaded || !options || options->music == 0.0f || musicSource == 0)
+	if (!loaded || !options || options->music == 0.0f)
 		return;
 
-	ALint musicState;
-	alGetSourcei(musicSource, AL_SOURCE_STATE, &musicState);
+	bool musicPlaying = musicChannelActive && ma_sound_is_playing(&musicChannel.sound);
+	bool streamPlaying = streamingChannelActive && ma_sound_is_playing(&streamingChannel.sound);
 
-	ALint streamState = AL_STOPPED;
-	if (streamingSource != 0)
-		alGetSourcei(streamingSource, AL_SOURCE_STATE, &streamState);
-
-	if (musicState == AL_PLAYING || streamState == AL_PLAYING)
+	if (musicPlaying || streamPlaying)
 	{
 		if (noMusicDelay > 0)
 			noMusicDelay--;
@@ -240,17 +191,14 @@ void SoundEngine::playMusicTick()
 		noMusicDelay = random.nextInt(12000) + 12000;
 
 		bool isMus = song->filePath.size() >= 4 && song->filePath.compare(song->filePath.size() - 4, 4, ".mus") == 0;
-		ALuint buffer = loadOGGFile(song->filePath, isMus);
-		if (buffer != 0)
+		std::shared_ptr<DecodedAudio> audio = loadDecodedAudio(song->filePath, isMus);
+		if (audio != nullptr && bindChannel(musicChannel, audio, true))
 		{
-			alSourceStop(musicSource);
-			alSourcei(musicSource, AL_BUFFER, buffer);
-			alSourcei(musicSource, AL_LOOPING, AL_TRUE);
-			alSourcef(musicSource, AL_GAIN, options->music);
-			alSource3f(musicSource, AL_POSITION, 0.0f, 0.0f, 0.0f);
-			alSourcef(musicSource, AL_REFERENCE_DISTANCE, 1.0f);
-			alSourcef(musicSource, AL_MAX_DISTANCE, 10000.0f);
-			alSourcePlay(musicSource);
+			musicChannelActive = true;
+			ma_sound_set_attenuation_model(&musicChannel.sound, ma_attenuation_model_none);
+			ma_sound_set_volume(&musicChannel.sound, options->music);
+			ma_sound_set_position(&musicChannel.sound, 0.0f, 0.0f, 0.0f);
+			ma_sound_start(&musicChannel.sound);
 		}
 	}
 }
@@ -272,9 +220,8 @@ void SoundEngine::update(Mob *player, float a)
 	float forwardY = 0.0f;
 	float forwardZ = -yCos;
 
-	alListener3f(AL_POSITION, (float)x, (float)y, (float)z);
-	float orientation[6] = { forwardX, forwardY, forwardZ, 0.0f, 1.0f, 0.0f };
-	alListenerfv(AL_ORIENTATION, orientation);
+	ma_engine_listener_set_position(&engine, 0, (float)x, (float)y, (float)z);
+	ma_engine_listener_set_direction(&engine, 0, forwardX, forwardY, forwardZ);
 
 	listenerX = (float)x;
 	listenerY = (float)y;
@@ -286,28 +233,22 @@ void SoundEngine::update(Mob *player, float a)
 
 void SoundEngine::checkAndReleaseFinishedSources()
 {
-	for (size_t n = 0; n < channelSources.size(); ++n)
+	for (size_t n = 0; n < channels.size(); ++n)
 	{
 		if (channelIds[n].empty())
 			continue;
 
-		ALuint source = channelSources[n];
-		ALint state;
-		alGetSourcei(source, AL_SOURCE_STATE, &state);
+		Channel &channel = channels[n];
+		bool finished = !channel.soundInitialized || !ma_sound_is_playing(&channel.sound);
 
-		if (state == AL_STOPPED || state == AL_INITIAL)
+		if (finished)
 		{
-			alSourceStop(source);
-			alSourcei(source, AL_BUFFER, 0);
-			alSource3f(source, AL_POSITION, 0.0f, 0.0f, 0.0f);
-			alSource3f(source, AL_VELOCITY, 0.0f, 0.0f, 0.0f);
-			alSourcef(source, AL_GAIN, 1.0f);
-			alSourcef(source, AL_PITCH, 1.0f);
-			alSourcef(source, AL_REFERENCE_DISTANCE, 1.0f);
-			alSourcef(source, AL_MAX_DISTANCE, FLT_MAX);
-			alSourcef(source, AL_ROLLOFF_FACTOR, 1.0f);
-			alSourcei(source, AL_LOOPING, AL_FALSE);
-			alGetError();
+			if (channel.soundInitialized)
+			{
+				ma_sound_uninit(&channel.sound);
+				channel.soundInitialized = false;
+			}
+			channel.audio.reset();
 
 			sourceInfoMap.erase(channelIds[n]);
 			channelIds[n].clear();
@@ -342,15 +283,13 @@ static float calculateLinearGain(float srcX, float srcY, float srcZ,
 // SourceLWJGLOpenAL.java:positionChanged (lines 199-208)
 void SoundEngine::updateSourceGains()
 {
-	for (size_t n = 0; n < channelSources.size(); ++n)
+	for (size_t n = 0; n < channels.size(); ++n)
 	{
 		if (channelIds[n].empty())
 			continue;
 
-		ALuint source = channelSources[n];
-		ALint state;
-		alGetSourcei(source, AL_SOURCE_STATE, &state);
-		if (state != AL_PLAYING && state != AL_PAUSED)
+		Channel &channel = channels[n];
+		if (!channel.soundInitialized || !ma_sound_is_playing(&channel.sound))
 			continue;
 
 		auto infoIt = sourceInfoMap.find(channelIds[n]);
@@ -362,47 +301,41 @@ void SoundEngine::updateSourceGains()
 		if (info.attModel == 2)
 			gain = calculateLinearGain(info.x, info.y, info.z, listenerX, listenerY, listenerZ, info.distOrRoll);
 
-		alSourcef(source, AL_GAIN, gain * info.sourceVolume);
+		ma_sound_set_volume(&channel.sound, gain * info.sourceVolume);
 	}
 
 	// Streaming source (not in the channel pool)
 	auto streamingInfoIt = sourceInfoMap.find("streaming");
-	if (streamingInfoIt != sourceInfoMap.end() && streamingSource != 0)
+	if (streamingInfoIt != sourceInfoMap.end() && streamingChannelActive && ma_sound_is_playing(&streamingChannel.sound))
 	{
-		ALint state;
-		alGetSourcei(streamingSource, AL_SOURCE_STATE, &state);
-		if (state == AL_PLAYING || state == AL_PAUSED)
-		{
-			const SourceInfo &info = streamingInfoIt->second;
-			float gain = 1.0f;
-			if (info.attModel == 2)
-				gain = calculateLinearGain(info.x, info.y, info.z, listenerX, listenerY, listenerZ, info.distOrRoll);
-			alSourcef(streamingSource, AL_GAIN, gain * info.sourceVolume);
-		}
+		const SourceInfo &info = streamingInfoIt->second;
+		float gain = 1.0f;
+		if (info.attModel == 2)
+			gain = calculateLinearGain(info.x, info.y, info.z, listenerX, listenerY, listenerZ, info.distOrRoll);
+		ma_sound_set_volume(&streamingChannel.sound, gain * info.sourceVolume);
 	}
 }
 
 // SoundManager.java:129-151
 void SoundEngine::playStreaming(const jstring &name, float x, float y, float z, float volume, float pitch)
 {
-	if (!loaded || !options || options->sound == 0.0f || streamingSource == 0)
+	if (!loaded || !options || options->sound == 0.0f)
 		return;
 
 	std::string id = "streaming";
 
 	// Stop current streaming
-	ALint state;
-	alGetSourcei(streamingSource, AL_SOURCE_STATE, &state);
-	if (state == AL_PLAYING || state == AL_PAUSED)
+	if (streamingChannelActive)
 	{
-		alSourceStop(streamingSource);
-		alSourcei(streamingSource, AL_BUFFER, 0);
+		ma_sound_stop(&streamingChannel.sound);
+		ma_sound_uninit(&streamingChannel.sound);
+		streamingChannel.soundInitialized = false;
+		streamingChannelActive = false;
 	}
+	streamingChannel.audio.reset();
 
 	if (name.empty())
 	{
-		alSourceStop(streamingSource);
-		alSourcei(streamingSource, AL_BUFFER, 0);
 		sourceInfoMap.erase(id);
 		return;
 	}
@@ -412,49 +345,38 @@ void SoundEngine::playStreaming(const jstring &name, float x, float y, float z, 
 		return;
 
 	// Stop background music if streaming starts
-	if (musicSource != 0)
-	{
-		alGetSourcei(musicSource, AL_SOURCE_STATE, &state);
-		if (state == AL_PLAYING)
-		{
-			alSourceStop(musicSource);
-			alSourcei(musicSource, AL_BUFFER, 0);
-		}
-	}
+	if (musicChannelActive && ma_sound_is_playing(&musicChannel.sound))
+		ma_sound_stop(&musicChannel.sound);
 
 	// dist * 4.0F = 64.0F for streaming
 	float dist = 16.0f * 4.0f;
 
 	// vanilla picks the codec by extension: only .mus files go through CodecMus
 	bool isMus = sound->filePath.size() >= 4 && sound->filePath.compare(sound->filePath.size() - 4, 4, ".mus") == 0;
-	ALuint buffer = loadOGGFile(sound->filePath, isMus);
-	if (buffer == 0)
+	std::shared_ptr<DecodedAudio> audio = loadDecodedAudio(sound->filePath, isMus);
+	if (audio == nullptr || !bindChannel(streamingChannel, audio, false))
 	{
 		sourceInfoMap.erase(id);
 		return;
 	}
+	streamingChannelActive = true;
 
-	alSourcei(streamingSource, AL_BUFFER, 0);
-	alSource3f(streamingSource, AL_POSITION, x, y, z);
-	alSource3f(streamingSource, AL_VELOCITY, 0.0f, 0.0f, 0.0f);
-	alSourcei(streamingSource, AL_SOURCE_RELATIVE, AL_FALSE);
-	alSourcei(streamingSource, AL_BUFFER, buffer);
+	ma_sound_set_position(&streamingChannel.sound, x, y, z);
 
-	// attModel 2: disable OpenAL distance attenuation, we calculate manually
-	alSourcef(streamingSource, AL_ROLLOFF_FACTOR, 0.0f);
+	// attModel 2: disable miniaudio's own distance attenuation, we calculate manually
+	ma_sound_set_attenuation_model(&streamingChannel.sound, ma_attenuation_model_none);
+	ma_sound_set_spatialization_enabled(&streamingChannel.sound, true);
 
-	alSourcef(streamingSource, AL_PITCH, pitch);
+	ma_sound_set_pitch(&streamingChannel.sound, pitch);
 
 	// SoundManager.java:145 - soundSystem.setVolume(id, 0.5F * this.options.sound)
 	float sourceVolume = 0.5f * options->sound;
 	sourceInfoMap[id] = SourceInfo(x, y, z, dist, sourceVolume, 2);
 
 	float gain = calculateLinearGain(x, y, z, listenerX, listenerY, listenerZ, dist);
-	alSourcef(streamingSource, AL_GAIN, gain * sourceVolume);
-	alSourcei(streamingSource, AL_LOOPING, AL_FALSE);
+	ma_sound_set_volume(&streamingChannel.sound, gain * sourceVolume);
 
-	alGetError();
-	alSourcePlay(streamingSource);
+	ma_sound_start(&streamingChannel.sound);
 }
 
 // SoundManager.java:153-175
@@ -479,28 +401,28 @@ void SoundEngine::play(const jstring &name, float x, float y, float z, float vol
 	// SoundManager.java:163 - sndSystem.newSource(var5 > 1.0F, ...) (priority flag)
 	bool priority = volume > 1.0f;
 
-	ALuint source = getOrCreateSource(id, false, priority);
-	if (source == 0)
+	int_t n = getOrCreateChannel(id, priority);
+	if (n < 0)
 	{
 		debugDrops++;
 		return;
 	}
 
-	ALuint buffer;
-	if (!loadSound(*sound, buffer))
+	std::shared_ptr<DecodedAudio> audio = loadDecodedAudio(sound->filePath);
+	if (audio == nullptr || !bindChannel(channels[n], audio, false))
+	{
+		sourceInfoMap.erase(id);
+		channelIds[n].clear();
 		return;
+	}
 
-	alSourceStop(source);
-	alSourcei(source, AL_BUFFER, 0);
-	alSource3f(source, AL_VELOCITY, 0.0f, 0.0f, 0.0f);
+	Channel &channel = channels[n];
 
-	alSourcei(source, AL_BUFFER, buffer);
-	alSource3f(source, AL_POSITION, x, y, z);
-	alSource3f(source, AL_VELOCITY, 0.0f, 0.0f, 0.0f);
-	alSourcei(source, AL_SOURCE_RELATIVE, AL_FALSE);
+	ma_sound_set_position(&channel.sound, x, y, z);
 
-	// attModel 2: disable OpenAL distance attenuation
-	alSourcef(source, AL_ROLLOFF_FACTOR, 0.0f);
+	// attModel 2: disable miniaudio's own distance attenuation
+	ma_sound_set_attenuation_model(&channel.sound, ma_attenuation_model_none);
+	ma_sound_set_spatialization_enabled(&channel.sound, true);
 
 	// Paulscode clamps pitch between 0.5F and 2.0F (Library.java:401-416)
 	float clampedPitch = pitch;
@@ -508,7 +430,7 @@ void SoundEngine::play(const jstring &name, float x, float y, float z, float vol
 		clampedPitch = 0.5f;
 	else if (clampedPitch > 2.0f)
 		clampedPitch = 2.0f;
-	alSourcef(source, AL_PITCH, clampedPitch);
+	ma_sound_set_pitch(&channel.sound, clampedPitch);
 
 	// SoundManager.java:165-167 - clamp volume after pitch
 	float finalVolume = volume > 1.0f ? 1.0f : volume;
@@ -516,11 +438,9 @@ void SoundEngine::play(const jstring &name, float x, float y, float z, float vol
 	sourceInfoMap[id] = SourceInfo(x, y, z, dist, sourceVolume, 2, priority);
 
 	float gain = calculateLinearGain(x, y, z, listenerX, listenerY, listenerZ, dist);
-	alSourcef(source, AL_GAIN, gain * sourceVolume);
-	alSourcei(source, AL_LOOPING, AL_FALSE);
+	ma_sound_set_volume(&channel.sound, gain * sourceVolume);
 
-	alGetError();
-	alSourcePlay(source);
+	ma_sound_start(&channel.sound);
 }
 
 // SoundManager.java:177-195
@@ -541,121 +461,122 @@ void SoundEngine::playUI(const jstring &name, float volume, float pitch)
 		volume = 1.0f;
 	volume *= 0.25f;
 
-	ALuint source = getOrCreateSource(id, false);
-	if (source == 0)
+	int_t n = getOrCreateChannel(id);
+	if (n < 0)
 		return;
 
-	ALuint buffer;
-	if (!loadSound(*sound, buffer))
+	std::shared_ptr<DecodedAudio> audio = loadDecodedAudio(sound->filePath);
+	if (audio == nullptr || !bindChannel(channels[n], audio, false))
+	{
+		sourceInfoMap.erase(id);
+		channelIds[n].clear();
 		return;
+	}
+
+	Channel &channel = channels[n];
 
 	// Non-positional (attModel 0)
-	alSourceStop(source);
-	alSourcei(source, AL_BUFFER, 0);
-	alSource3f(source, AL_VELOCITY, 0.0f, 0.0f, 0.0f);
+	ma_sound_set_position(&channel.sound, 0.0f, 0.0f, 0.0f);
+	ma_sound_set_spatialization_enabled(&channel.sound, false);
+	ma_sound_set_pitch(&channel.sound, pitch);
+	ma_sound_set_volume(&channel.sound, volume * options->sound);
 
-	alSourcei(source, AL_BUFFER, buffer);
-	alSource3f(source, AL_POSITION, 0.0f, 0.0f, 0.0f);
-	alSource3f(source, AL_VELOCITY, 0.0f, 0.0f, 0.0f);
-	alSourcef(source, AL_ROLLOFF_FACTOR, 0.0f);
-	alSourcef(source, AL_PITCH, pitch);
-	alSourcef(source, AL_GAIN, volume * options->sound);
-	alSourcei(source, AL_LOOPING, AL_FALSE);
-
-	alGetError();
-	alSourcePlay(source);
+	ma_sound_start(&channel.sound);
 }
 
 // Paulscode Library.getNextChannel (b1.2 ref: paulscode/sound/Library.java:514)
-ALuint SoundEngine::getOrCreateSource(const std::string &id, bool streaming, bool priority)
+int_t SoundEngine::getOrCreateChannel(const std::string &id, bool priority)
 {
 	(void)priority;
-	if (streaming)
-		return streamingSource;
 
-	int_t channels = static_cast<int_t>(channelSources.size());
-	if (channels == 0)
-		return 0;
+	int_t count = static_cast<int_t>(channels.size());
+	if (count == 0)
+		return -1;
 
-	auto takeChannel = [this](int_t n) -> ALuint
+	auto takeChannel = [this](int_t n) -> int_t
 	{
-		ALuint source = channelSources[n];
-
-		alSourceStop(source);
-		alSourcei(source, AL_BUFFER, 0);
-		alSource3f(source, AL_POSITION, 0.0f, 0.0f, 0.0f);
-		alSourcef(source, AL_GAIN, 1.0f);
-		alSourcef(source, AL_PITCH, 1.0f);
-		alSourcef(source, AL_REFERENCE_DISTANCE, 1.0f);
-		alSourcei(source, AL_LOOPING, AL_FALSE);
+		Channel &channel = channels[n];
+		if (channel.soundInitialized)
+		{
+			ma_sound_stop(&channel.sound);
+			ma_sound_uninit(&channel.sound);
+			channel.soundInitialized = false;
+		}
+		channel.audio.reset();
 
 		if (!channelIds[n].empty())
 			sourceInfoMap.erase(channelIds[n]);
-		return source;
+		return n;
 	};
 
 	// pass 1: a source with the same name takes over its existing channel
-	for (int_t n = 0; n < channels; ++n)
+	for (int_t n = 0; n < count; ++n)
 	{
 		if (channelIds[n] == id)
-			return takeChannel(n);
+		{
+			takeChannel(n);
+			channelIds[n] = id;
+			return n;
+		}
 	}
 
 	// pass 2: round-robin from the cursor, take the first channel whose
 	// current sound is not playing
 	int_t n = nextNormalChannel;
-	for (int_t x = 0; x < channels; ++x)
+	for (int_t x = 0; x < count; ++x)
 	{
 		bool playing = false;
 		if (!channelIds[n].empty())
-		{
-			ALint state;
-			alGetSourcei(channelSources[n], AL_SOURCE_STATE, &state);
-			playing = state == AL_PLAYING;
-		}
+			playing = channels[n].soundInitialized && ma_sound_is_playing(&channels[n].sound);
 
 		if (!playing)
 		{
-			nextNormalChannel = (n + 1) % channels;
-			ALuint source = takeChannel(n);
+			nextNormalChannel = (n + 1) % count;
+			takeChannel(n);
 			channelIds[n] = id;
-			return source;
+			return n;
 		}
 
-		n = (n + 1) % channels;
+		n = (n + 1) % count;
 	}
 
 	// pass 3: ANY new source takes over a channel whose current sound is not
 	// priority; only priority sounds are protected. Drop only when every
 	// channel is playing a priority sound.
 	n = nextNormalChannel;
-	for (int_t x = 0; x < channels; ++x)
+	for (int_t x = 0; x < count; ++x)
 	{
 		auto info = sourceInfoMap.find(channelIds[n]);
 		bool protectedChannel = info != sourceInfoMap.end() && info->second.priority;
 
 		if (!protectedChannel)
 		{
-			nextNormalChannel = (n + 1) % channels;
-			ALuint source = takeChannel(n);
+			nextNormalChannel = (n + 1) % count;
+			takeChannel(n);
 			channelIds[n] = id;
-			return source;
+			return n;
 		}
 
-		n = (n + 1) % channels;
+		n = (n + 1) % count;
 	}
 
-	return 0;
+	return -1;
 }
 
 void SoundEngine::releaseSource(const std::string &id)
 {
-	for (size_t n = 0; n < channelSources.size(); ++n)
+	for (size_t n = 0; n < channels.size(); ++n)
 	{
 		if (channelIds[n] == id)
 		{
-			alSourceStop(channelSources[n]);
-			alSourcei(channelSources[n], AL_BUFFER, 0);
+			Channel &channel = channels[n];
+			if (channel.soundInitialized)
+			{
+				ma_sound_stop(&channel.sound);
+				ma_sound_uninit(&channel.sound);
+				channel.soundInitialized = false;
+			}
+			channel.audio.reset();
 			channelIds[n].clear();
 			sourceInfoMap.erase(id);
 			return;
@@ -663,27 +584,66 @@ void SoundEngine::releaseSource(const std::string &id)
 	}
 }
 
-// OGG loading via stb_vorbis, with optional MUS XOR decryption
+// Binds a channel's ma_sound to (a view of) the given decoded PCM buffer, so it
+// can be started with ma_sound_start(). Any sound previously bound to this
+// channel is torn down first. Each channel gets its own ma_audio_buffer_ref -
+// a cheap, independent read cursor into the shared PCM - so the same decoded
+// sound can play concurrently on several channels (e.g. a burst of pops)
+// without the playback positions stepping on each other.
+bool SoundEngine::bindChannel(Channel &channel, const std::shared_ptr<DecodedAudio> &audio, bool loop)
+{
+	if (!engineInitialized || audio == nullptr || audio->frameCount == 0)
+		return false;
+
+	if (channel.soundInitialized)
+	{
+		ma_sound_uninit(&channel.sound);
+		channel.soundInitialized = false;
+	}
+
+	if (ma_audio_buffer_ref_init(ma_format_s16, audio->channels, audio->pcm.data(), audio->frameCount, &channel.bufferRef) != MA_SUCCESS)
+	{
+		channel.audio.reset();
+		return false;
+	}
+	channel.bufferRef.sampleRate = audio->sampleRate;
+
+	if (ma_sound_init_from_data_source(&engine, &channel.bufferRef, 0, nullptr, &channel.sound) != MA_SUCCESS)
+	{
+		ma_audio_buffer_ref_uninit(&channel.bufferRef);
+		channel.audio.reset();
+		return false;
+	}
+
+	channel.soundInitialized = true;
+	channel.audio = audio; // keep the PCM alive for as long as this channel references it
+	ma_sound_set_looping(&channel.sound, loop ? MA_TRUE : MA_FALSE);
+	return true;
+}
+
+// OGG decoding via stb_vorbis, with optional MUS XOR decryption. Decodes the
+// whole file to PCM once and caches it; every channel that plays this sound
+// gets its own lightweight reference into the shared PCM (see bindChannel).
 // MUS decryption: MusInputStream.java - XOR each byte with (hash >> 8), evolve hash
-ALuint SoundEngine::loadOGGFile(const std::string &filePath, bool isMUS)
+std::shared_ptr<SoundEngine::DecodedAudio> SoundEngine::loadDecodedAudio(const std::string &filePath, bool isMUS)
 {
 	std::string cacheKey = filePath + (isMUS ? "_mus" : "");
-	auto it = soundBuffers.find(cacheKey);
-	if (it != soundBuffers.end())
+	auto it = decodedCache.find(cacheKey);
+	if (it != decodedCache.end())
 		return it->second;
 
 	std::ifstream file(filePath, std::ios::binary | std::ios::ate);
 	if (!file.is_open())
 	{
 		std::cerr << "Failed to open sound file: " << filePath << std::endl;
-		return 0;
+		return nullptr;
 	}
 
 	size_t fileSize = (size_t)file.tellg();
 	if (fileSize == 0 || fileSize > 100 * 1024 * 1024)
 	{
 		file.close();
-		return 0;
+		return nullptr;
 	}
 
 	file.seekg(0, std::ios::beg);
@@ -691,7 +651,7 @@ ALuint SoundEngine::loadOGGFile(const std::string &filePath, bool isMUS)
 	if (!file.read((char *)fileData.data(), fileSize))
 	{
 		file.close();
-		return 0;
+		return nullptr;
 	}
 	file.close();
 
@@ -719,44 +679,25 @@ ALuint SoundEngine::loadOGGFile(const std::string &filePath, bool isMUS)
 		}
 	}
 
-	int channels, sampleRate;
+	int channelCount, sampleRate;
 	short *output = nullptr;
-	int samples = stb_vorbis_decode_memory((const uint8 *)fileData.data(), (int)fileSize, &channels, &sampleRate, &output);
+	int samples = stb_vorbis_decode_memory((const uint8 *)fileData.data(), (int)fileSize, &channelCount, &sampleRate, &output);
 
-	if (samples <= 0 || output == nullptr || channels <= 0 || channels > 2)
+	if (samples <= 0 || output == nullptr || channelCount <= 0 || channelCount > 2)
 	{
 		if (output) free(output);
-		return 0;
+		return nullptr;
 	}
 
-	ALenum format = (channels == 1) ? AL_FORMAT_MONO16 : AL_FORMAT_STEREO16;
-
-	ALuint buffer = 0;
-	alGenBuffers(1, &buffer);
-	if (buffer == 0)
-	{
-		free(output);
-		return 0;
-	}
-
-	alBufferData(buffer, format, output, samples * channels * (int)sizeof(short), sampleRate);
+	auto audio = std::make_shared<DecodedAudio>();
+	audio->channels = (ma_uint32)channelCount;
+	audio->sampleRate = (ma_uint32)sampleRate;
+	audio->frameCount = (ma_uint64)samples;
+	audio->pcm.assign(output, output + (size_t)samples * channelCount);
 	free(output);
 
-	ALenum err = alGetError();
-	if (err != AL_NO_ERROR)
-	{
-		alDeleteBuffers(1, &buffer);
-		return 0;
-	}
-
-	soundBuffers[cacheKey] = buffer;
-	return buffer;
-}
-
-bool SoundEngine::loadSound(const Sound &sound, ALuint &buffer, bool isMUS)
-{
-	buffer = loadOGGFile(sound.filePath, isMUS);
-	return buffer != 0;
+	decodedCache[cacheKey] = audio;
+	return audio;
 }
 
 int_t SoundEngine::debugActiveSources()
@@ -773,13 +714,11 @@ int_t SoundEngine::debugActiveSources()
 int_t SoundEngine::debugPlayingSources()
 {
 	int_t playing = 0;
-	for (size_t n = 0; n < channelSources.size(); ++n)
+	for (size_t n = 0; n < channels.size(); ++n)
 	{
 		if (channelIds[n].empty())
 			continue;
-		ALint state;
-		alGetSourcei(channelSources[n], AL_SOURCE_STATE, &state);
-		if (state == AL_PLAYING)
+		if (channels[n].soundInitialized && ma_sound_is_playing(&channels[n].sound))
 			playing++;
 	}
 	return playing;

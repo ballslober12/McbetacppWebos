@@ -9,8 +9,10 @@ class ContainerScreen : public Screen
 protected:
 	explicit ContainerScreen(Minecraft &minecraft);
 	static bool shouldClose(bool alive, bool removed);
-	static jstring getTooltipName(const ItemInstance &stack);
 
 public:
+	// Also used by DebugMenuScreen to label the item it's about to give.
+	static jstring getTooltipName(const ItemInstance &stack);
+
 	void tick() override;
 };

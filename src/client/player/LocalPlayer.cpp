@@ -114,6 +114,21 @@ void LocalPlayer::aiStep()
 		ySlideOffset = 0.2f;
 
 	Player::aiStep();
+
+	// Debug menu "fly": bypass gravity/collision on the Y axis entirely and
+	// move straight up/down off the jump and sneak keys, matching the same
+	// keys used for swimming so it doesn't need extra bindings.
+	if (flying)
+	{
+		fallDistance = 0.0f;
+		yd = 0.0;
+
+		constexpr double flySpeed = 0.6;
+		if (jumping)
+			y += flySpeed;
+		if (input->sneaking)
+			y -= flySpeed;
+	}
 }
 
 void LocalPlayer::addStat(const StatBase &stat, int_t amount)

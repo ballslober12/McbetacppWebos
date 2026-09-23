@@ -1393,14 +1393,14 @@ void LevelRenderer::cull(Culler &culler, float a)
 	cullStep++;
 }
 
-void LevelRenderer::playStreamingMusic(const jstring &, int_t, int_t, int_t)
+void LevelRenderer::playStreamingMusic(const jstring &name, int_t x, int_t y, int_t z)
 {
-	// Audio is intentionally disabled in this build.
+	mc.soundEngine.playStreaming(name, (float)x, (float)y, (float)z, 1.0f, 1.0f);
 }
 
-void LevelRenderer::playSound(const jstring &, double, double, double, float, float)
+void LevelRenderer::playSound(const jstring &name, double x, double y, double z, float volume, float pitch)
 {
-	// Audio is intentionally disabled in this build.
+	mc.soundEngine.play(name, (float)x, (float)y, (float)z, volume, pitch);
 }
 
 void LevelRenderer::addParticle(const jstring &name, double x, double y, double z, double xa, double ya, double za)
@@ -1445,7 +1445,8 @@ void LevelRenderer::addParticle(const jstring &name, double x, double y, double 
 
 void LevelRenderer::playMusic(const jstring &name, double x, double y, double z, float songOffset)
 {
-
+	(void)songOffset;
+	mc.soundEngine.playStreaming(name, (float)x, (float)y, (float)z, 1.0f, 1.0f);
 }
 
 void LevelRenderer::entityAdded(std::shared_ptr<Entity> entity)

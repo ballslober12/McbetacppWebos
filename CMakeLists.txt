@@ -22,6 +22,13 @@ set(McBetaCpp_SOURCES
 	"src/client/ScreenShotHelper.h"
 	"src/client/spc/SPCCommand.cpp"
 	"src/client/spc/SPCCommand.h"
+
+	"src/client/sound/Sound.h"
+	"src/client/sound/SoundEngine.cpp"
+	"src/client/sound/SoundEngine.h"
+	"src/client/sound/SoundRepository.cpp"
+	"src/client/sound/SoundRepository.h"
+	"src/pc/external/miniaudio.cpp"
 	
 	"src/Facing.h"
 	"src/SharedConstants.cpp"
@@ -108,6 +115,8 @@ set(McBetaCpp_SOURCES
 	"src/client/gui/OptionsScreen.h"
 	"src/client/gui/PauseScreen.cpp"
 	"src/client/gui/PauseScreen.h"
+	"src/client/gui/DebugMenuScreen.cpp"
+	"src/client/gui/DebugMenuScreen.h"
 	"src/client/gui/StatisticsScreen.cpp"
 	"src/client/gui/StatisticsScreen.h"
 	"src/client/gui/Screen.cpp"
@@ -1288,11 +1297,12 @@ add_subdirectory("external/glad" EXCLUDE_FROM_ALL)
 target_link_libraries(McBetaCppCore PUBLIC glad)
 
 # glad uses dlsym() for runtime GL symbol loading on the webOS ARM
-# Wayland target. Keep libdl explicitly on the final link line.
-if(B173_WEBOS AND UNIX)
-	# GLAD uses dlsym(), and the Minecraft networking/GUI code uses
-	# pthread_join() and other POSIX thread APIs. webOS's linker requires
-	# both DSOs to be present explicitly on the final link line.
+# Wayland target, and miniaudio (src/client/sound) dlopen's the platform
+# audio backend (ALSA/PulseAudio on Linux/webOS) at runtime rather than
+# linking against it directly. Keep libdl and libpthread explicitly on the
+# final link line - webOS's linker in particular requires both DSOs to be
+# present explicitly rather than pulled in transitively.
+if(UNIX)
 	target_link_libraries(McBetaCppCore PUBLIC dl pthread)
 endif()
 
@@ -1339,6 +1349,7 @@ target_include_directories(McBetaCppCore PUBLIC "external/zlib/contrib/minizip")
 
 target_include_directories(McBetaCppCore PUBLIC "external/stb")
 target_include_directories(McBetaCppCore PUBLIC "external/gzip-hpp/include")
+target_include_directories(McBetaCppCore SYSTEM PUBLIC "vendor/miniaudio")
 
 
 

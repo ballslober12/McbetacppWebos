@@ -60,6 +60,7 @@ void Screen::mouseClicked(int_t x, int_t y, int_t buttonNum)
 		{
 			if (button->clicked(minecraft, x, y))
 			{
+				minecraft.soundEngine.playUI(u"random.click", 1.0f, 1.0f);
 				clickedButton = button;
 				buttonClicked(*button);
 			}

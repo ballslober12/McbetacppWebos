@@ -378,8 +378,12 @@ void onActionChanged(Action a, bool down)
 			if (down)
 				tapKey(SDLK_t); // open chat (default chat key)
 			break;
+		case A_NUM9:
+			if (down)
+				tapKey(SDLK_F7); // debug menu (9 also looks right while held, see update())
+			break;
 		default:
-			break; // 5/7/8/9 look around, handled continuously in update()
+			break; // 5/7/8 look around, handled continuously in update()
 	}
 }
 
@@ -978,6 +982,14 @@ void padButton(SDL_GameControllerButton b, bool down)
 				else if (osk::isChat())
 					tapKey(SDLK_ESCAPE); // close chat
 			}
+			break;
+
+		case SDL_CONTROLLER_BUTTON_RIGHTSTICK:
+			// In a menu, R3 is the existing cursor-precision modifier read
+			// elsewhere via g_padButton[]; only treat it as "open debug menu"
+			// during actual gameplay so the two don't collide.
+			if (down && !menu)
+				tapKey(SDLK_F7); // debug menu
 			break;
 
 		case SDL_CONTROLLER_BUTTON_DPAD_UP:

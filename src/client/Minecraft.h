@@ -17,6 +17,8 @@
 #include "client/gui/Font.h"
 #include "client/gui/Screen.h"
 
+#include "client/sound/SoundEngine.h"
+
 #include "client/renderer/LevelRenderer.h"
 #include "client/renderer/GameRenderer.h"
 #include "client/renderer/Textures.h"
@@ -70,6 +72,8 @@ public:
 	LevelRenderer levelRenderer{*this, textures};
 
 	std::shared_ptr<LocalPlayer> player;
+
+	SoundEngine soundEngine;
 
 	std::unique_ptr<User> user;
 	jstring serverDomain;
@@ -145,6 +149,12 @@ private:
 	void renderLoadingScreen();
 	void blit(int_t dstx, int_t dsty, int_t srcx, int_t srcy, int_t w, int_t h);
 	void fileDownloaded(const jstring &name, File *file);
+
+	// Recursively registers every .ogg/.mus/.wav under resource/sound and
+	// resource/newsound with soundEngine (sound effects), and everything
+	// under resource/music and resource/newmusic as background tracks.
+	void loadAllSounds();
+	void loadAllSoundsRecursive(File *dir, const jstring &prefix);
 
 public:
 	static const std::shared_ptr<File> &getWorkingDirectory();
