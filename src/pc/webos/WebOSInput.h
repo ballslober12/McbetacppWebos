@@ -4,8 +4,6 @@
 // Two sources feed the game:
 //  * SDL2's webOS backend, which delivers the Magic Remote pointer as mouse
 //    events and the d-pad / OK / Back keys as keyboard events;
-//  * the legacy LGNC callbacks (liblgncopenapi), used when the system accepts
-//    LGNC_SYSTEM_Initialize (compiled in when MC_WEBOS_LGNC is defined).
 //
 // Both are turned into the same LWJGL-style mouse/keyboard events the desktop
 // build consumes, so the menus, the "create new world" screen and the game

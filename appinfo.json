@@ -2,6 +2,6 @@
   "id": "com.ballslover.mcbetacpp1",
   "type": "native",
   "main": "McBetaCpp",
-  "title": "Minecraft Beta 1.7.3 C++",
-  "version": "1.7.3-webos"
+  "title": "Minecraft",
+  "version": "1.1"
 }

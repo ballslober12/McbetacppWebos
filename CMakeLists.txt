@@ -1,16 +1,14 @@
 cmake_minimum_required(VERSION 3.14)
 
 project(McBetaCpp
-	VERSION 1.2.2.0
+	VERSION 1.1
 	DESCRIPTION "A game about placing blocks to build anything you can imagine."
 	LANGUAGES C CXX
 )
 
-# LG webOS/Wayland target. This build intentionally reuses the exact SDL2
-# ABI package from the known-working 3D Wayland demo instead of building a
-# second SDL2 copy inside the game.
+# LG webOS/Wayland target. Reuse the known-working SDL2 ABI package;
+# the final app bundle ships one SDL2 runtime file and no legacy LGNC library.
 option(B173_WEBOS "Build the LG webOS Wayland client" ON)
-option(B173_WEBOS_LGNC "Enable LGNC remote input integration" ON)
 option(B173_STATIC_CXX_RUNTIME "Statically link libstdc++ and libgcc" ON)
 set(B173_WEBOS_SDL2_ROOT "${CMAKE_SOURCE_DIR}/vendor/SDL2" CACHE PATH "Known-working webOS SDL2 ABI package")
 
@@ -1320,18 +1318,8 @@ if(B173_WEBOS)
 	target_link_libraries(McBetaCppCore PUBLIC SDL2-webos)
 	target_include_directories(McBetaCppCore PUBLIC "${B173_WEBOS_SDL2_ROOT}/include/SDL2")
 	target_compile_definitions(McBetaCppCore PUBLIC MC_WEBOS=1)
-	if(B173_WEBOS_LGNC)
-		target_compile_definitions(McBetaCppCore PUBLIC MC_WEBOS_LGNC=1)
-	endif()
-
-	# The webOS SDK sysroot supplies the real TV-side LGNC ABI.
-	find_library(B173_LGNC_LIBRARY NAMES lgncopenapi PATHS "${CMAKE_SYSROOT}/usr/lib" "${CMAKE_SYSROOT}/lib" NO_DEFAULT_PATH)
-	if(B173_WEBOS_LGNC AND B173_LGNC_LIBRARY)
-		target_link_libraries(McBetaCppCore PUBLIC "${B173_LGNC_LIBRARY}")
-		target_include_directories(McBetaCppCore PUBLIC "${CMAKE_SOURCE_DIR}/vendor/webos-userland/include")
-	else()
-		message(WARNING "LGNC library not found in sysroot; building SDL/Wayland-only input")
-	endif()
+	# Input is provided by SDL2/Wayland. Do not link the legacy LGNC ABI;
+	# webOS packaging only needs SDL2 for this application.
 
 	# The executable is bin/McBetaCpp; keep the working SDL2 beside it in bin/lib.
 	set_target_properties(McBetaCpp PROPERTIES

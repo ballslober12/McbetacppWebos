@@ -21,6 +21,7 @@ controls:
 | 0 | Open chat |
 | Back | Escape |
 
+
 ## In menus and inventory
 
 | Remote button | Action |
@@ -54,7 +55,7 @@ and USB pads). Controllers SDL has no mapping for are treated as Xbox-layout.
 | D-pad down | - | one slot down (text screens: show / hide the on-screen keyboard) |
 | D-pad left / right | - | one slot left / right (keyboard up: move left / right) |
 | Right stick click (R3), held | - | precision cursor (about 1/3 speed) |
-| Left stick click (L3) | open chat (T) | closes the chat |
+| Left stick click (L3) | debug menu
 
 The log shows `[PAD] ...` lines when a controller is connected and for the first
 button presses, which helps if a button is mapped wrongly.
@@ -91,3 +92,4 @@ add a gamepad support done
 optimisate it more good to get 60 fps maybe done 
 better controls done 
 webos keyboard implementation done 
+
