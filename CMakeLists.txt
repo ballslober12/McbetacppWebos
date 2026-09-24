@@ -978,8 +978,6 @@ set(McBetaCpp_SOURCES
 	"src/java/Type.h"
 	
 	"src/external/stb_image.cpp"
-	"external/zlib/contrib/minizip/ioapi.c"
-	"external/zlib/contrib/minizip/unzip.c"
 )
 
 # Add webOS-specific sources with normal CMake conditionals.  These are
@@ -1304,14 +1302,17 @@ if(UNIX)
 	target_link_libraries(McBetaCppCore PUBLIC dl pthread)
 endif()
 
+# Third-party sources and packages are downloaded at configure time, pinned
+# by hash.
+if(POLICY CMP0135)
+	cmake_policy(SET CMP0135 NEW)
+endif()
+include(FetchContent)
+
 # SDL2 for webOS: the prebuilt webosbrew/SDL-webOS "-abi" release, which
 # contains the webOS Wayland/xkbcommon backend the TV accepts. It is downloaded
 # at configure time (pinned by hash) instead of being committed to the tree.
 if(B173_WEBOS)
-	if(POLICY CMP0135)
-		cmake_policy(SET CMP0135 NEW)
-	endif()
-	include(FetchContent)
 	set(B173_WEBOS_SDL2_RELEASE "release-2.30.12-webos.5")
 	FetchContent_Declare(sdl2_webos
 		URL "https://github.com/webosbrew/SDL-webOS/releases/download/${B173_WEBOS_SDL2_RELEASE}/SDL2-2.30.12-webos-abi.tar.gz"
@@ -1337,12 +1338,27 @@ if(B173_WEBOS)
 	)
 endif()
 
-add_subdirectory("external/zlib" EXCLUDE_FROM_ALL)
+# zlib is the system library: libz.so.1 from the SDK sysroot at build time and
+# from the TV firmware at run time (it is not bundled).
+find_package(ZLIB REQUIRED)
+target_link_libraries(McBetaCppCore PUBLIC ZLIB::ZLIB)
 
-target_link_libraries(McBetaCppCore PUBLIC zlibstatic)
-target_include_directories(McBetaCppCore PUBLIC "external/zlib")
-target_include_directories(McBetaCppCore PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/external/zlib")
-target_include_directories(McBetaCppCore PUBLIC "external/zlib/contrib/minizip")
+# minizip (unzip only, for texture pack zips) is not in the firmware. Build its
+# two sources from the zlib 1.3.1 release, the same zlib version as the SDK.
+FetchContent_Declare(zlib_minizip
+	URL "https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz"
+	URL_HASH SHA256=9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23
+)
+FetchContent_GetProperties(zlib_minizip)
+if(NOT zlib_minizip_POPULATED)
+	# Only contrib/minizip is used; zlib's own CMakeLists.txt is not added.
+	FetchContent_Populate(zlib_minizip)
+endif()
+target_sources(McBetaCppCore PRIVATE
+	"${zlib_minizip_SOURCE_DIR}/contrib/minizip/ioapi.c"
+	"${zlib_minizip_SOURCE_DIR}/contrib/minizip/unzip.c"
+)
+target_include_directories(McBetaCppCore PUBLIC "${zlib_minizip_SOURCE_DIR}/contrib/minizip")
 
 target_include_directories(McBetaCppCore PUBLIC "external/stb")
 target_include_directories(McBetaCppCore PUBLIC "external/gzip-hpp/include")
