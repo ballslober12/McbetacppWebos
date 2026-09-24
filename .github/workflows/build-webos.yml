@@ -1,0 +1,83 @@
+name: Build (webOS)
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build IPK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+
+      - name: Download ares-cli-rs
+        uses: robinraju/release-downloader@v1.12
+        with:
+          repository: "webosbrew/ares-cli-rs"
+          latest: true
+          fileName: "ares-package_*_amd64.deb"
+          out-file-path: "temp"
+
+      - name: Download Homebrew Toolbox
+        uses: robinraju/release-downloader@v1.12
+        with:
+          repository: "webosbrew/dev-toolbox-cli"
+          latest: true
+          fileName: "webosbrew-toolbox-*_amd64.deb"
+          out-file-path: "temp"
+
+      - name: Install Tools
+        run: |
+          sudo apt-get -yq update
+          sudo apt-get -yq install cmake ./temp/*.deb
+
+      - name: Download webOS NDK
+        uses: robinraju/release-downloader@v1.12
+        with:
+          repository: openlgtv/buildroot-nc4
+          tag: webos-a38c582
+          fileName: arm-webos-linux-gnueabi_sdk-buildroot-x86_64.tar.gz
+          out-file-path: /tmp
+          extract: true
+
+      - name: Relocate webOS NDK
+        working-directory: /tmp
+        run: ./arm-webos-linux-gnueabi_sdk-buildroot/relocate-sdk.sh
+
+      - name: Configure
+        run: >-
+          cmake -B build/webos
+          -DCMAKE_TOOLCHAIN_FILE=/tmp/arm-webos-linux-gnueabi_sdk-buildroot/share/buildroot/toolchainfile.cmake
+          -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build/webos --parallel
+
+      - name: Package
+        run: cmake --build build/webos --target webos-package
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: webos-ipk
+          path: |
+            dist/*.ipk
+            dist/manifest.json
+
+      - name: Compatibility Check
+        run: webosbrew-ipk-verify -f markdown -d -o $GITHUB_STEP_SUMMARY dist/*.ipk
+
+      - name: Attach to Release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" dist/*.ipk dist/manifest.json --clobber
