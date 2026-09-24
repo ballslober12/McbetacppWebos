@@ -1026,7 +1026,7 @@ target_link_libraries(McBetaCpp PRIVATE McBetaCppCore)
 
 # webOS ARM TVs can ship an older libstdc++.so.6 than the SDK used to build
 # this program. Keep the C++ runtime inside the executable so it does not
-# request GLIBCXX_3.4.29+ / CXXABI_* symbols from the TV. SDL2/LGNC/libc stay
+# request GLIBCXX_3.4.29+ / CXXABI_* symbols from the TV. SDL2 and libc stay
 # dynamic.
 if(B173_WEBOS AND UNIX AND B173_STATIC_CXX_RUNTIME)
 	target_link_options(McBetaCpp PRIVATE -static-libstdc++ -static-libgcc)

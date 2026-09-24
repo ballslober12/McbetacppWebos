@@ -3,6 +3,26 @@ Mcbetacpp 1.7.3 for webos
 
 its very cool and thats mine first homebrew for webos 
 
+## Building
+
+Needs the webOS toolchain from [buildroot-nc4](https://github.com/openlgtv/buildroot-nc4/releases)
+(`arm-webos-linux-gnueabi_sdk-buildroot`), CMake 3.19+,
+[ares-package](https://github.com/webosbrew/ares-cli-rs) and, for the Homebrew
+Channel manifest, `webosbrew-gen-manifest` from
+[dev-toolbox-cli](https://github.com/webosbrew/dev-toolbox-cli).
+SDL2 is downloaded at configure time from
+[webosbrew/SDL-webOS](https://github.com/webosbrew/SDL-webOS/releases).
+
+```sh
+cmake -B build/webos -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_TOOLCHAIN_FILE=/opt/arm-webos-linux-gnueabi_sdk-buildroot/share/buildroot/toolchainfile.cmake
+cmake --build build/webos --parallel
+cmake --build build/webos --target webos-package
+```
+
+The IPK and `manifest.json` are written to `dist/`. The app version comes from
+`project(... VERSION ...)` in `CMakeLists.txt`.
+
 controls:
 
 ## In game
