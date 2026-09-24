@@ -1,0 +1,7 @@
+{
+  "id": "com.ballslover.mcbetacpp1",
+  "type": "native",
+  "main": "McBetaCpp",
+  "title": "Minecraft",
+  "version": "@PROJECT_VERSION@"
+}
