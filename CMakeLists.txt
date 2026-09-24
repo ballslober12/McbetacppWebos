@@ -6,11 +6,11 @@ project(McBetaCpp
 	LANGUAGES C CXX
 )
 
-# LG webOS/Wayland target. Reuse the known-working SDL2 ABI package;
-# the final app bundle ships one SDL2 runtime file and no legacy LGNC library.
+# LG webOS/Wayland target. SDL2 comes from a pinned webosbrew/SDL-webOS
+# release; the final app bundle ships one SDL2 runtime file and no legacy LGNC
+# library.
 option(B173_WEBOS "Build the LG webOS Wayland client" ON)
 option(B173_STATIC_CXX_RUNTIME "Statically link libstdc++ and libgcc" ON)
-set(B173_WEBOS_SDL2_ROOT "${CMAKE_SOURCE_DIR}/vendor/SDL2" CACHE PATH "Known-working webOS SDL2 ABI package")
 
 set(McBetaCpp_SOURCES
 	"src/ClientTarget.h"
@@ -1304,24 +1304,33 @@ if(UNIX)
 	target_link_libraries(McBetaCppCore PUBLIC dl pthread)
 endif()
 
-# Use the exact shared SDL2 package from the working Wayland 3D demo.
-# It contains the webOS Wayland/xkbcommon backend that the TV accepts.
+# SDL2 for webOS: the prebuilt webosbrew/SDL-webOS "-abi" release, which
+# contains the webOS Wayland/xkbcommon backend the TV accepts. It is downloaded
+# at configure time (pinned by hash) instead of being committed to the tree.
 if(B173_WEBOS)
-	if(NOT EXISTS "${B173_WEBOS_SDL2_ROOT}/lib/libSDL2-2.0.so.0.3000.12")
-		message(FATAL_ERROR "Missing webOS SDL2 ABI package: ${B173_WEBOS_SDL2_ROOT}/lib/libSDL2-2.0.so.0.3000.12")
+	if(POLICY CMP0135)
+		cmake_policy(SET CMP0135 NEW)
 	endif()
-	add_library(SDL2-webos SHARED IMPORTED GLOBAL)
-	set_target_properties(SDL2-webos PROPERTIES
-		IMPORTED_LOCATION "${B173_WEBOS_SDL2_ROOT}/lib/libSDL2-2.0.so.0.3000.12"
-		INTERFACE_INCLUDE_DIRECTORIES "${B173_WEBOS_SDL2_ROOT}/include/SDL2"
+	include(FetchContent)
+	set(B173_WEBOS_SDL2_RELEASE "release-2.30.12-webos.5")
+	FetchContent_Declare(sdl2_webos
+		URL "https://github.com/webosbrew/SDL-webOS/releases/download/${B173_WEBOS_SDL2_RELEASE}/SDL2-2.30.12-webos-abi.tar.gz"
+		URL_HASH SHA256=750ea26b41425ed54a58aba40d70970d4c0bae239142781f03dfcd153da475d1
 	)
-	target_link_libraries(McBetaCppCore PUBLIC SDL2-webos)
-	target_include_directories(McBetaCppCore PUBLIC "${B173_WEBOS_SDL2_ROOT}/include/SDL2")
+	FetchContent_GetProperties(sdl2_webos)
+	if(NOT sdl2_webos_POPULATED)
+		# Prebuilt package: populate only, there is no CMakeLists.txt to add.
+		FetchContent_Populate(sdl2_webos)
+	endif()
+	# Only this package: the SDK sysroot ships a different SDL2 build.
+	find_package(SDL2 2.30.12 EXACT CONFIG REQUIRED
+		PATHS "${sdl2_webos_SOURCE_DIR}" NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
+	target_link_libraries(McBetaCppCore PUBLIC SDL2::SDL2)
 	target_compile_definitions(McBetaCppCore PUBLIC MC_WEBOS=1)
 	# Input is provided by SDL2/Wayland. Do not link the legacy LGNC ABI;
 	# webOS packaging only needs SDL2 for this application.
 
-	# The executable is bin/McBetaCpp; keep the working SDL2 beside it in bin/lib.
+	# The executable sits at the app root; SDL2 is bundled beside it in lib/.
 	set_target_properties(McBetaCpp PROPERTIES
 		BUILD_RPATH "\$ORIGIN/lib"
 		INSTALL_RPATH "\$ORIGIN/lib"
