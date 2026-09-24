@@ -1407,3 +1407,7 @@ endif()
 add_dependencies(McBetaCpp McBetaCppResources)
 add_dependencies(McBetaCppStress McBetaCppResources)
 add_dependencies(McBetaCppLightCacheSmoke McBetaCppResources)
+
+if(B173_WEBOS)
+	include(cmake/PackageWebOS.cmake)
+endif()

@@ -1,0 +1,4 @@
+set(CPACK_WEBOS_STRIP_COMMAND "@CMAKE_STRIP@")
+set(CPACK_WEBOS_PACKAGE_ARCH "@WEBOS_PACKAGE_ARCH@")
+set(CPACK_WEBOS_MANIFEST_ICON "https://raw.githubusercontent.com/ballslober12/McbetacppWebos/main/icon.png")
+set(CPACK_WEBOS_MANIFEST_LINK "https://github.com/ballslober12/McbetacppWebos")
