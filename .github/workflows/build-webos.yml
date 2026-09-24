@@ -15,6 +15,7 @@ jobs:
   build:
     name: Build IPK
     runs-on: ubuntu-latest
+    timeout-minutes: 45
 
     steps:
       - name: Checkout Source
@@ -61,10 +62,10 @@ jobs:
           -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
-        run: cmake --build build/webos --parallel
+        run: cmake --build build/webos --parallel 2
 
       - name: Package
-        run: cmake --build build/webos --target webos-package
+        run: cmake --build build/webos --target webos-package --parallel 2
 
       - uses: actions/upload-artifact@v4
         with:
