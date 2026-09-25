@@ -432,6 +432,13 @@ struct State
 	ArrayPtr arrays[ATTR_COUNT];
 	bool attribEnabled[ATTR_COUNT] = {false, false, false, false};
 
+	// Last value actually sent to the driver for a disabled generic attribute
+	// (glVertexAttrib4f), so bindAttribs can skip re-sending the same default
+	// colour/normal/texcoord on every draw - GUI/item/particle draws are many
+	// small calls in a row that usually share the same current colour.
+	float lastAttrib4[ATTR_COUNT][4] = {};
+	bool lastAttrib4Valid[ATTR_COUNT] = {false, false, false, false};
+
 	GLuint arrayBuffer = 0;
 	GLuint elementBuffer = 0;
 	GLuint quadIndexVbo = 0;
@@ -475,6 +482,64 @@ State &stateInstance()
 	return state;
 }
 #define S (stateInstance())
+
+// ---------------------------------------------------------------------------
+// Redundant-bind elimination
+// ---------------------------------------------------------------------------
+// Every es.BindBuffer / es.BindTexture call in this file used to go straight
+// to the driver, even when the target was already bound - and the terrain
+// draw path (bindAttribs) rebinds the SAME interleaved VBO up to four times
+// per chunk, once per enabled attribute. On the TV's GL driver each of those
+// is a real call across the ES2/EGL boundary, and with hundreds of chunks
+// visible that adds up to thousands of avoidable calls a frame. These three
+// helpers are the single choke point for the real (driver-side) binding of
+// GL_ARRAY_BUFFER, GL_ELEMENT_ARRAY_BUFFER and GL_TEXTURE_2D: every call site
+// in the file goes through them instead of calling es.BindBuffer/BindTexture
+// directly, so the cached "currently bound" value always matches reality and
+// a bind is skipped whenever it would be a no-op.
+GLuint g_realArrayBuffer = 0xFFFFFFFFu;
+GLuint g_realElementBuffer = 0xFFFFFFFFu;
+GLuint g_realTexture2D = 0xFFFFFFFFu;
+
+void bindArrayBuffer(GLuint buffer)
+{
+	if (g_realArrayBuffer == buffer)
+		return;
+	es.BindBuffer(ENUM_ARRAY_BUFFER, buffer);
+	g_realArrayBuffer = buffer;
+}
+
+void bindElementBuffer(GLuint buffer)
+{
+	if (g_realElementBuffer == buffer)
+		return;
+	es.BindBuffer(ENUM_ELEMENT_ARRAY_BUFFER, buffer);
+	g_realElementBuffer = buffer;
+}
+
+void bindTexture2D(GLuint texture)
+{
+	if (g_realTexture2D == texture)
+		return;
+	es.BindTexture(CAP_TEXTURE_2D, texture);
+	g_realTexture2D = texture;
+}
+
+// A buffer or texture name can be reused by the driver the moment it is
+// deleted, so a stale cache entry could wrongly skip a real rebind onto a
+// same-numbered new object. Called from sh_DeleteBuffers / sh_DeleteTextures.
+void forgetDeletedBuffer(GLuint buffer)
+{
+	if (g_realArrayBuffer == buffer)
+		g_realArrayBuffer = 0xFFFFFFFFu;
+	if (g_realElementBuffer == buffer)
+		g_realElementBuffer = 0xFFFFFFFFu;
+}
+void forgetDeletedTexture(GLuint texture)
+{
+	if (g_realTexture2D == texture)
+		g_realTexture2D = 0xFFFFFFFFu;
+}
 
 GLsizei typeSize(GLenum type)
 {
@@ -877,30 +942,43 @@ void bindAttribs(const ArrayPtr *arr, GLint first)
 			const std::uint8_t *p = static_cast<const std::uint8_t *>(a.ptr) + static_cast<std::ptrdiff_t>(first) * stride;
 			const GLboolean normalized = (i == ATTR_COLOR || i == ATTR_NORMAL) && a.type != ENUM_FLOAT ? GL_TRUE : GL_FALSE;
 
-			es.BindBuffer(ENUM_ARRAY_BUFFER, a.vbo);
+			bindArrayBuffer(a.vbo);
 			es.VertexAttribPointer(static_cast<GLuint>(i), a.size, a.type, normalized, a.stride, p);
 			setAttribEnabled(i, true);
 		}
 		else
 		{
 			setAttribEnabled(i, false);
+			float v[4];
+			bool have = true;
 			switch (i)
 			{
 				case ATTR_COLOR:
-					es.VertexAttrib4f(ATTR_COLOR, S.color[0], S.color[1], S.color[2], S.color[3]);
+					v[0] = S.color[0]; v[1] = S.color[1]; v[2] = S.color[2]; v[3] = S.color[3];
 					break;
 				case ATTR_NORMAL:
-					es.VertexAttrib4f(ATTR_NORMAL, S.normal[0], S.normal[1], S.normal[2], 0.0f);
+					v[0] = S.normal[0]; v[1] = S.normal[1]; v[2] = S.normal[2]; v[3] = 0.0f;
 					break;
 				case ATTR_TEX:
-					es.VertexAttrib4f(ATTR_TEX, 0.0f, 0.0f, 0.0f, 1.0f);
+					v[0] = 0.0f; v[1] = 0.0f; v[2] = 0.0f; v[3] = 1.0f;
 					break;
 				default:
+					have = false;
 					break;
+			}
+			if (have)
+			{
+				float *last = S.lastAttrib4[i];
+				if (!S.lastAttrib4Valid[i] || last[0] != v[0] || last[1] != v[1] || last[2] != v[2] || last[3] != v[3])
+				{
+					es.VertexAttrib4f(static_cast<GLuint>(i), v[0], v[1], v[2], v[3]);
+					last[0] = v[0]; last[1] = v[1]; last[2] = v[2]; last[3] = v[3];
+					S.lastAttrib4Valid[i] = true;
+				}
 			}
 		}
 	}
-	es.BindBuffer(ENUM_ARRAY_BUFFER, S.arrayBuffer);
+	bindArrayBuffer(S.arrayBuffer);
 }
 
 void buildQuadIndices()
@@ -961,18 +1039,18 @@ void drawArraysWith(const ArrayPtr *arr, GLenum mode, GLint first, GLsizei count
 			es.GenBuffers(1, &S.quadIndexVbo);
 			if (S.quadIndexVbo != 0)
 			{
-				es.BindBuffer(ENUM_ELEMENT_ARRAY_BUFFER, S.quadIndexVbo);
+				bindElementBuffer(S.quadIndexVbo);
 				es.BufferData(ENUM_ELEMENT_ARRAY_BUFFER, static_cast<GLsizeiptr>(S.quadIndices.size() * sizeof(std::uint16_t)),
 				              S.quadIndices.data(), 0x88E4 /* GL_STATIC_DRAW */);
-				es.BindBuffer(ENUM_ELEMENT_ARRAY_BUFFER, S.elementBuffer);
+				bindElementBuffer(S.elementBuffer);
 			}
 		}
 
 		const bool useIndexBuffer = S.quadIndexVbo != 0;
 		if (useIndexBuffer)
-			es.BindBuffer(ENUM_ELEMENT_ARRAY_BUFFER, S.quadIndexVbo);
+			bindElementBuffer(S.quadIndexVbo);
 		else if (S.elementBuffer != 0)
-			es.BindBuffer(ENUM_ELEMENT_ARRAY_BUFFER, 0); // client-side indices need it empty
+			bindElementBuffer(0); // client-side indices need it empty
 
 		GLsizei remaining = count - (count % 4);
 		GLint offset = first;
@@ -988,7 +1066,7 @@ void drawArraysWith(const ArrayPtr *arr, GLenum mode, GLint first, GLsizei count
 		}
 
 		if (useIndexBuffer || S.elementBuffer != 0)
-			es.BindBuffer(ENUM_ELEMENT_ARRAY_BUFFER, S.elementBuffer);
+			bindElementBuffer(S.elementBuffer);
 		return;
 	}
 
@@ -1244,9 +1322,9 @@ void uploadSnapshot(DrawSnapshot &snap)
 	es.GenBuffers(1, &buffer);
 	if (buffer == 0)
 		return;
-	es.BindBuffer(ENUM_ARRAY_BUFFER, buffer);
+	bindArrayBuffer(buffer);
 	es.BufferData(ENUM_ARRAY_BUFFER, static_cast<GLsizeiptr>(total), blob.data(), 0x88E4 /* GL_STATIC_DRAW */);
-	es.BindBuffer(ENUM_ARRAY_BUFFER, S.arrayBuffer);
+	bindArrayBuffer(S.arrayBuffer);
 
 	snap.vbo = buffer;
 	for (int i = 0; i < ATTR_COUNT; i++)
@@ -1757,12 +1835,16 @@ void APIENTRY sh_DrawElements(GLenum mode, GLsizei count, GLenum type, const voi
 void APIENTRY sh_BindBuffer(GLenum target, GLuint buffer)
 {
 	if (target == ENUM_ARRAY_BUFFER)
+	{
 		S.arrayBuffer = buffer;
+		bindArrayBuffer(buffer);
+	}
 	else if (target == ENUM_ELEMENT_ARRAY_BUFFER)
+	{
 		S.elementBuffer = buffer;
-	else
-		return; // GL_PIXEL_UNPACK_BUFFER and other targets do not exist on ES 2.0
-	es.BindBuffer(target, buffer);
+		bindElementBuffer(buffer);
+	}
+	// GL_PIXEL_UNPACK_BUFFER and other targets do not exist on ES 2.0
 }
 
 void APIENTRY sh_GenBuffers(GLsizei n, GLuint *buffers)
@@ -1781,6 +1863,7 @@ void APIENTRY sh_DeleteBuffers(GLsizei n, const GLuint *buffers)
 		for (int a = 0; a < ATTR_COUNT; a++)
 			if (S.arrays[a].vbo == buffers[i])
 				S.arrays[a].vbo = 0;
+		forgetDeletedBuffer(buffers[i]);
 	}
 	es.DeleteBuffers(n, buffers);
 }
@@ -1811,8 +1894,14 @@ void APIENTRY sh_GetBufferSubData(GLenum, GLintptr, GLsizeiptr size, void *data)
 void APIENTRY sh_BindTexture(GLenum target, GLuint texture)
 {
 	if (target == CAP_TEXTURE_2D)
+	{
 		S.boundTexture = texture;
-	es.BindTexture(target, texture);
+		bindTexture2D(texture);
+	}
+	else
+	{
+		es.BindTexture(target, texture);
+	}
 }
 
 void APIENTRY sh_GenTextures(GLsizei n, GLuint *textures)
@@ -1823,8 +1912,11 @@ void APIENTRY sh_GenTextures(GLsizei n, GLuint *textures)
 void APIENTRY sh_DeleteTextures(GLsizei n, const GLuint *textures)
 {
 	for (GLsizei i = 0; i < n; i++)
+	{
 		if (textures[i] == S.boundTexture)
 			S.boundTexture = 0;
+		forgetDeletedTexture(textures[i]);
+	}
 	es.DeleteTextures(n, textures);
 }
 
@@ -2352,7 +2444,7 @@ void drawCursorOverlay(float x, float y, int width, int height, float scale)
 	es.UseProgram(overlay.program);
 	S.currentProgram = overlay.program;
 	es.Uniform2f(overlay.uScreen, static_cast<float>(width), static_cast<float>(height));
-	es.BindBuffer(ENUM_ARRAY_BUFFER, 0);
+	bindArrayBuffer(0);
 	setAttribEnabled(ATTR_POS, true);
 
 	std::vector<float> vertices(static_cast<std::size_t>(CURSOR_VERTEX_COUNT) * 2);
@@ -2386,7 +2478,7 @@ void drawCursorOverlay(float x, float y, int width, int height, float scale)
 	                     static_cast<GLenum>(blendFactors[2]), static_cast<GLenum>(blendFactors[3]));
 	es.ColorMask(colorMask[0], colorMask[1], colorMask[2], colorMask[3]);
 	es.Viewport(viewport[0], viewport[1], viewport[2], viewport[3]);
-	es.BindBuffer(ENUM_ARRAY_BUFFER, S.arrayBuffer);
+	bindArrayBuffer(S.arrayBuffer);
 	for (int i = 1; i < ATTR_COUNT; i++)
 		if (parked[i])
 			setAttribEnabled(i, true);
@@ -2451,13 +2543,13 @@ bool createTarget(int w, int h)
 	}
 
 	es.GenTextures(1, &RS.tex);
-	es.BindTexture(CAP_TEXTURE_2D, RS.tex);
+	bindTexture2D(RS.tex);
 	es.TexParameteri(CAP_TEXTURE_2D, ENUM_TEXTURE_MIN_FILTER, static_cast<GLint>(ENUM_LINEAR));
 	es.TexParameteri(CAP_TEXTURE_2D, ENUM_TEXTURE_MAG_FILTER, static_cast<GLint>(ENUM_LINEAR));
 	es.TexParameteri(CAP_TEXTURE_2D, ENUM_TEXTURE_WRAP_S, static_cast<GLint>(ENUM_CLAMP_TO_EDGE));
 	es.TexParameteri(CAP_TEXTURE_2D, ENUM_TEXTURE_WRAP_T, static_cast<GLint>(ENUM_CLAMP_TO_EDGE));
 	es.TexImage2D(CAP_TEXTURE_2D, 0, static_cast<GLint>(ENUM_RGBA), w, h, 0, ENUM_RGBA, ENUM_UNSIGNED_BYTE, nullptr);
-	es.BindTexture(CAP_TEXTURE_2D, S.boundTexture);
+	bindTexture2D(S.boundTexture);
 
 	f.GenRenderbuffers(1, &RS.depthRb);
 	f.BindRenderbuffer(ENUM_RENDERBUFFER, RS.depthRb);
@@ -2840,12 +2932,17 @@ void resetState()
 	S.callDepth = 0;
 	S.currentProgram = 0;
 	S.arrayBuffer = S.elementBuffer = S.boundTexture = 0;
+	// A fresh/lost context means the driver's real bindings are unknown again
+	// (0 on a brand new context, but do not assume that - force the next
+	// bindArrayBuffer/bindElementBuffer/bindTexture2D call to actually bind).
+	g_realArrayBuffer = g_realElementBuffer = g_realTexture2D = 0xFFFFFFFFu;
 	S.matStamp = S.lightStamp = S.fogStamp = S.alphaStamp = 1;
 	S.mvpStamp = 0;
 	for (int i = 0; i < ATTR_COUNT; i++)
 	{
 		S.arrays[i] = ArrayPtr();
 		S.attribEnabled[i] = false;
+		S.lastAttrib4Valid[i] = false;
 	}
 }
 
@@ -2996,7 +3093,7 @@ bool beginPresent(int nativeWidth, int nativeHeight)
 
 	es.UseProgram(RS.program);
 	S.currentProgram = RS.program;
-	es.BindTexture(CAP_TEXTURE_2D, RS.tex);
+	bindTexture2D(RS.tex);
 	es.Uniform1i(RS.uTex, 0);
 
 	static const float quad[16] = {
@@ -3004,7 +3101,7 @@ bool beginPresent(int nativeWidth, int nativeHeight)
 		1.0f, -1.0f, 1.0f, 0.0f,
 		-1.0f, 1.0f, 0.0f, 1.0f,
 		1.0f, 1.0f, 1.0f, 1.0f};
-	es.BindBuffer(ENUM_ARRAY_BUFFER, 0);
+	bindArrayBuffer(0);
 	setAttribEnabled(ATTR_COLOR, false);
 	setAttribEnabled(ATTR_NORMAL, false);
 	setAttribEnabled(ATTR_POS, true);
@@ -3034,10 +3131,10 @@ void endPresent()
 			RS.guardArmed = false;
 			webos::log("[SCALE] offscreen rendering verified (300 frames)");
 		}
-		es.BindBuffer(ENUM_ARRAY_BUFFER, S.arrayBuffer);
+		bindArrayBuffer(S.arrayBuffer);
 		for (int i = 0; i < ATTR_COUNT; i++)
 			setAttribEnabled(i, RS.savedAttrib[i]);
-		es.BindTexture(CAP_TEXTURE_2D, S.boundTexture);
+		bindTexture2D(S.boundTexture);
 		setCap(CAP_DEPTH_TEST, RS.savedDepth);
 		setCap(CAP_CULL_FACE, RS.savedCull);
 		setCap(CAP_BLEND, RS.savedBlend);
