@@ -112,4 +112,4 @@ add a gamepad support done
 optimisate it more good to get 60 fps maybe done 
 better controls done 
 webos keyboard implementation done 
-
+i got plus +3 fps 
